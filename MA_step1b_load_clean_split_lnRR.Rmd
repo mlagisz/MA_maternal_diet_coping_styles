@@ -1,0 +1,168 @@
+R script for:
+MA on the effects of maternal nutrition on offsprong's coping styles
+
+STEP 1: data upload, cleaning and reshaping (preprocessing script) 
+
+(based on code bits originally written by Alistair, modified by Losia)
+
+========================================================
+
+1. data upload  
+--------------
+```{r load, echo=TRUE, message=FALSE, eval=TRUE, include=FALSE}
+rm(list=ls())
+getRversion()
+options(scipen=100)
+
+#install.packages("car")
+library(car)
+
+data <- read.csv("data/main_data_processed.csv") #start from data processed for Hedges d analyses
+names(data)
+dim(data) #390 84
+#str(data)
+```
+
+2.  calculate lnRR and its variance as alternative effect size measure
+------------------------------------------
+```{r calc lnRR, echo=TRUE, message=FALSE, eval=TRUE, include=FALSE}
+## Calculate lnRR (based on Alistair's code)
+#Calc.lnRR<-function(CMean, EMean){
+#lnRR<-log(EMean / CMean)
+#return(lnRR)
+#}
+#Calc.var.lnRR<-function(CMean, CN, CSD, EMean, EN, ESD){
+#EVar<-ESD^2
+#CVar<-CSD^2
+#V <- (CVar / (CN * (CMean^2))) + (EVar / (EN * (EMean^2))) #diagonal
+#return(V)
+#}
+
+data$lnRR <- log(data$exp_mean / data$con_mean)
+range(data$lnRR) #Inf value due to some means being 0 - find and replace 0 with 0.01
+data[data$lnRR==Inf, ] # comp_183
+data[data$con_mean==0, "con_mean"] <- 0.01 #fix the problem
+data$lnRR <- log(data$exp_mean / data$con_mean) #recalculate after removing 0 mean
+range(data$lnRR) #ok
+
+data$lnRR_Var <- (data$varianceofcontrols / (data$con_n * (data$con_mean^2))) + (data$varianceoftreatment / (data$exp_n * (data$exp_mean^2))) #use for the var-covar matrix diagonal
+data$lnRR_SE <- sqrt(data$lnRR_Var)
+
+#controlling lnRR variance for shared control group among some treatment groups 
+#data$lnRR_Var_adj <- (CVar / (CN * (CMean^2))) #adjusted variance for cases with shared contol group - use in the var-covar matrix
+```
+
+Special case with comp613 - means represent percentages, take out this data point (we cannot use it with lnRR)
+------------------------------------------
+```{r remove comp_613, echo=TRUE, message=FALSE, eval=TRUE, include=FALSE}
+data <- data[which(data$comp_ID != "comp_613"),]
+```
+
+3.  tidy-up outcome directions for lnRR - reversing the signs for some RR values
+---------------------------------------------------------
+FOR SOME ANXIETY BASED MEASURES A HIGHER VALUE AMONGST THE TREATMENT GROUP ACTUALLY EQUATES TO A DECREASE IN ANXIETY THERE VALUES NEED TO BE INVERTED (get opposite sign)
+
+```{r outcome signs lnRR, echo=TRUE, message=FALSE, eval=TRUE, include=FALSE}
+data$lnRR[which(data$high_better == "yes" & data$my.behaviour == "ANXIETY")] <- data$lnRR[which(data$high_better == "yes" & data$my.behaviour == "ANXIETY")] * -1
+data$lnRR[which(data$high_better == "no" & data$my.behaviour == "EXPLORATION")] <- data$lnRR[which(data$high_better == "no" & data$my.behaviour == "EXPLORATION")] * -1
+data$lnRR[which(data$high_better == "no" & data$my.behaviour == "ACTIVITY")] <- data$lnRR[which(data$high_better == "no" & data$my.behaviour == "ACTIVITY")] * -1
+```
+
+4. save the main data and data subsets
+--------------------------------------------------------------
+```{r save and split data, echo=TRUE, message=FALSE, eval=TRUE, include=FALSE}
+
+# save the main processed data file
+write.table(data, file="data/main_data_processed_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+
+# split the main processed data by treatment and outcomes and save into a separate files
+cal.plus.data <- data[which(data$treatment=="calorie+"),]
+cal.neg.data <- data[which(data$treatment=="calorie-"),]
+pro.neg.data <- data[which(data$treatment=="protein-"),]
+
+write.table(cal.plus.data[which(cal.plus.data$my.behaviour == "ACTIVITY"),], file="data/Cal.Plus.Act_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+write.table(cal.neg.data[which(cal.neg.data$my.behaviour == "ACTIVITY"),], file="data/Cal.Neg.Act_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+write.table(pro.neg.data[which(pro.neg.data$my.behaviour == "ACTIVITY"),], file="data/Pro.Neg.Act_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+
+write.table(cal.plus.data[which(cal.plus.data$my.behaviour == "EXPLORATION"),], file="data/Cal.Plus.Exp_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+write.table(cal.neg.data[which(cal.neg.data$my.behaviour == "EXPLORATION"),], file="data/Cal.Neg.Exp_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+write.table(pro.neg.data[which(pro.neg.data$my.behaviour == "EXPLORATION"),], file="data/Pro.Neg.Exp_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+
+write.table(cal.plus.data[which(cal.plus.data$my.behaviour == "ANXIETY"),], file="data/Cal.Plus.Anx_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+write.table(cal.neg.data[which(cal.neg.data$my.behaviour == "ANXIETY"),], file="data/Cal.Neg.Anx_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+write.table(pro.neg.data[which(pro.neg.data$my.behaviour == "ANXIETY"),], file="data/Pro.Neg.Anx_lnRR.csv", sep=",", col.names=names(data), row.names=F)
+```
+
+5. create and save data as a list
+--------------------------------------------------------------
+```{r save data list, echo=TRUE, message=FALSE, eval=TRUE, include=FALSE}
+#data <- read.csv("data/main_data_processed_lnRR.csv")
+
+#main_data <- data
+
+#Overfeeding
+data1 <- read.csv("data/Cal.Plus.Act_lnRR.csv")
+data2 <- read.csv("data/Cal.Plus.Exp_lnRR.csv")
+data3 <- read.csv("data/Cal.Plus.Anx_lnRR.csv")
+#Caloric restriction
+data4 <- read.csv("data/Cal.Neg.Act_lnRR.csv")
+data5 <- read.csv("data/Cal.Neg.Exp_lnRR.csv")
+data6 <- read.csv("data/Cal.Neg.Anx_lnRR.csv")
+#Protein restriction
+data7 <- read.csv("data/Pro.Neg.Act_lnRR.csv")
+data8 <- read.csv("data/Pro.Neg.Exp_lnRR.csv")
+data9 <- read.csv("data/Pro.Neg.Anx_lnRR.csv")
+
+#put all subsets in a list:
+data_list <- list(data1=data1,data2=data2,data3=data3,data4=data4,data5=data5,data6=data6,data7=data7,data8=data8,data9=data9)
+#str(data_list[[1]])
+#names(data_list[[1]])
+
+```
+
+12. scale continous predictors
+---------------------------------------------------------------------------------------------------
+```{r scaling, echo=FALSE, message=FALSE, eval=TRUE, include=FALSE}
+#scaling continuous moderators: nom_manip_val, dam_diet_start_dPC, dam_diet_end_dPC, response_age_dPP
+Z_data_list <- lapply(data_list, function(x) {
+  Z_nom_manip_val <- scale(x$nom_manip_val)
+  Z_nom_manip_val2 <- scale(x$nom_manip_val2)
+  Z_dam_diet_start_dPC <- scale(x$dam_diet_start_dPC)
+  Z_dam_diet_end_dPC <- scale(x$dam_diet_end_dPC)
+  Z_response_age_dPP <- scale(x$response_age_dPP)
+  Z_delay <- scale(x$response_age_dPP-x$dam_diet_end_dPC)
+  cbind(x,Z_nom_manip_val,Z_dam_diet_start_dPC,Z_dam_diet_end_dPC,Z_response_age_dPP,Z_delay)
+  })
+names(Z_data_list[[1]]) #check column names
+
+save(Z_data_list,file="data/Z_data_list_lnRR.Rdata")
+#rm(Z_data_list)
+```
+
+*************************************
+Check correlations among N SD and Hd
+------------------------------------
+```{r corr N SD Hd, echo=TRUE, message=FALSE, eval=TRUE, include=FALSE}
+library(psych)
+library(Matrix)
+
+#load("data/Z_data_list_lnRR.Rdata") ####upload data in a list format: for the 9 subsets
+
+#Z_data_list[[2]] <- NULL #exclude subset data2 from the data list - carefull the indexes will shuffle by 1!!!
+#df <- Z_data_list[[1]]
+
+pairs.panels(~H.d + H.d_Var_combined + exp_n + con_n + lnRR + lnRR_Var, main="Cal.Plus.Act (n=33)", lm=TRUE, ellipses=FALSE, jiggle=TRUE, data=Z_data_list[[1]])
+#cor.test(Z_data_list[[1]]$H.d, Z_data_list[[1]]$exp_n)
+pairs.panels(~H.d + H.d_Var_combined + exp_n + con_n + lnRR + lnRR_Var, main="Cal.Plus.Act (n=33)", lm=TRUE, ellipses=FALSE, jiggle=TRUE, data=Z_data_list[[3]])
+
+pairs.panels(~H.d + H.d_Var_combined + exp_n + con_n + lnRR + lnRR_Var, main="Cal.Plus.Act (n=33)", lm=TRUE, ellipses=FALSE, jiggle=TRUE, data=Z_data_list[[4]])
+
+pairs.panels(~H.d + H.d_Var_combined + exp_n + con_n + lnRR + lnRR_Var, main="Cal.Plus.Act (n=33)", lm=TRUE, ellipses=FALSE, jiggle=TRUE, data=Z_data_list[[5]])
+
+pairs.panels(~H.d + H.d_Var_combined + exp_n + con_n + lnRR + lnRR_Var, main="Cal.Plus.Act (n=33)", lm=TRUE, ellipses=FALSE, jiggle=TRUE, data=Z_data_list[[6]])
+
+pairs.panels(~H.d + H.d_Var_combined + exp_n + con_n + lnRR + lnRR_Var, main="Cal.Plus.Act (n=33)", lm=TRUE, ellipses=FALSE, jiggle=TRUE, data=Z_data_list[[7]])
+
+pairs.panels(~H.d + H.d_Var_combined + exp_n + con_n + lnRR + lnRR_Var, main="Cal.Plus.Act (n=33)", lm=TRUE, ellipses=FALSE, jiggle=TRUE, data=Z_data_list[[8]])
+
+```

@@ -1,0 +1,163 @@
+R script for:
+MA on the effects of maternal nutrition on offsprong's coping styles
+
+STEP 1: data upload, cleaning and reshaping (preprocessing script) 
+
+(based on code bits originally written by Alistair, modified by Losia)
+
+========================================================
+
+1. data upload  
+--------------
+```{r load, echo=FALSE, message=FALSE}
+rm(list=ls())
+getRversion()
+options(scipen=100)
+
+library(car)
+
+data <- read.csv("data/data maternal effect 07_Jan_2014.csv")
+names(data)
+#str(data)
+```
+
+2. data clean-up
+----------------
+```{r clean, echo=FALSE, message=FALSE}
+data<-data[-which(data$comp_ID==""), 3:81] #remove redundand rows and columns (including general Comments which contain characters that mess up when saving to .csv files)
+data<-data[,colSums(is.na(data))<nrow(data)] #remove any other empty columns
+data <- data[,-grep("X", names(data))] #remove columns that start with X
+names(data) #473 obs of 71 variables now
+
+# re-code treatment
+data$treatment<-paste(data$manip_type, data$manip_direction, sep="")
+
+# add new two new factors factor called set and set2, combining treatment type and outcome (my.behaviour) levels
+data$set<-factor(with(data, interaction(treatment,my.behaviour),drop=TRUE))
+data$set2<-data$set
+levels(data$set2) <- sub("calorie-", "CR", levels(data$set2))
+levels(data$set2) <- sub("calorie\\+", "OB", levels(data$set2))
+levels(data$set2) <- sub("protein-", "PR", levels(data$set2))
+levels(data$set2) <- sub("\\.ACTIVITY", "_act", levels(data$set2))
+levels(data$set2) <- sub("\\.EXPLORATION", "_exp", levels(data$set2))
+levels(data$set2) <- sub("\\.ANXIETY", "_anx", levels(data$set2))
+levels(data$set2)
+
+# remove % character from nom_manip_val
+#data$nom_manip_val
+data$nom_manip_val <- as.numeric(sub("%", "", data$nom_manip_val))
+
+# re-code missing SE data
+data$Missing <- 0
+data$Missing[which(is.na(data$exp_se)==T)] <- 1
+data$Missing[which(data$comp_ID == "comp_613")] <- 0
+
+# main data subset - remove data points with missing SE for the outcomes (473 -> 390 effect sizes)
+data <- data[-which(data$Missing==1),]
+```
+
+3. calculate standard deviations and variances for control end experimental outcomes
+------------------------------------------------------------------------------------
+```{r calc SD, echo=FALSE, message=FALSE}
+data$exp_sd<-data$exp_se * sqrt(data$exp_n) 
+data$con_sd<-data$con_se * sqrt(data$con_n)
+data$varianceoftreatment<-(data$exp_sd)^2
+data$varianceofcontrols<-(data$con_sd)^2
+```
+
+4. calculate pooled variance and Cohen's d 
+------------------------------------------
+```{r calc Cohens_d, echo=FALSE, message=FALSE}
+# calculate sPooled for each comparison
+sPooled<-sqrt(((data$exp_n - 1)*data$varianceoftreatment + (data$con_n - 1)*data$varianceofcontrols) / (data$exp_n + data$con_n - 2))
+# calculate Cohen's d for each comparison
+data$d<-(data$exp_mean - data$con_mean) / sPooled 
+
+# For comp_613 the measure is a population % calculate sPooled using variance = pi^2 / 3, and use logit %s, as proportions, for Cohen's d
+# NOTE: this is the only data point we have to do it, becouse this is the percents of animals showing certain response. All other percentages are means of some behavioral measures expressd as percents.
+sPooled.613 <- sqrt(((data$exp_n[which(data$comp_ID=="comp_613")] - 1)*((pi^2)/3) + (data$con_n[which(data$comp_ID == "comp_613")] - 1)*((pi^2)/3)) / (data$exp_n[which(data$comp_ID=="comp_613")] + data$con_n[which(data$comp_ID == "comp_613")] - 2))
+data$d[which(data$comp_ID == "comp_613")] <- (car::logit(data$exp_mean[which(data$comp_ID=="comp_613")]/100, percents=F) - car::logit(data$con_mean[which(data$comp_ID=="comp_613")]/100, percents=F)) / sPooled.613 
+
+##logit example:
+#.1*0:10
+#logit(.1*0:10, adjust=0)
+#library(car) #version 2.0-19 from 2013
+#logit(.1*0:10,percents=F) #if gives error message see below:
+#find("logit") #present in 2 packages!
+#names(formals(car::logit))
+#names(formals(psych::logit))
+#car::logit(.1*0:10,percents=F) #this works when namespaces are conflicting1
+```
+
+4. calculate Hedge's d and its SE
+------------------------------------------
+```{r calc Hedges_d, echo=FALSE, message=FALSE}
+## Calculate Hedges d
+data$H.d <- data$d * (1 - (3 / (4 * (data$exp_n + data$con_n - 2) - 1)))
+
+# Calculating SE of d = sqrt((Control samplesize + treatment sample size / Control samplesize * treatment sample size) + (d^2/2(Control samplesize + treatment sample size - 2)))
+data$SE.d <- sqrt( ( (data$con_n + data$exp_n) / (data$con_n * data$exp_n) ) + ( (data$H.d^2) / (2 * (data$con_n + data$exp_n - 2) ) ) )
+
+```
+
+5. add calculations fo controlling Hedge's d variance for shared control group among some treatment groups 
+---------------------------------------------------------------------------------------
+```{r calc shared_controls, echo=FALSE, message=FALSE}
+### summarise the data
+# calculate total number of treatment individuals used
+sum(data$exp_n)
+# calculate total number of contol individuals in the data set if control sharing not taken into account
+sum(data$con_n) #same as (for checking):
+# calculate CORRECT total number of contol individuals in the data set controlling for control sharing 
+sum(data[!duplicated(data[,"con_ID"]) ,"con_n" ])
+
+# add extra column to the dataframe = calcualte the total number of individuals within an experiment, accounting for shared controls (used once!) - be careful with splitting data by sex? 
+data$N_total <- ave(data$exp_n, data$con_ID, FUN = sum) + data$con_n
+
+# calculate variance of Hd adjusted for shared control 
+#data$H.d_Var_adj <- 1/data$exp_n + 1/data$con_n + data$H.d^2/(2*data$N_total)
+
+# use normal variance of Hd for non-shared ES, and adjusted version for shared ES
+data$H.d_Var_combined <- ifelse(data$con_ID %in% data$con_ID[duplicated(data$con_ID)], 
+                             data$H.d_Var_combined <- 1/data$exp_n + 1/data$con_n + data$H.d^2/(2*data$N_total), 
+                             data$H.d_Var_combined <- ((data$con_n+data$exp_n)/(data$con_n*data$exp_n)) + ((data$H.d^2)/(2*(data$con_n+data$exp_n-2))) )
+#replace unadjusted SE.d column with the adjusted SE values (square root of the variance)
+data$SE.d <- sqrt(data$H.d_Var_combined)
+```
+
+6.tidy-up outcome directions - reversing the signs for some values
+---------------------------------------------------------
+FOR SOME ANXIETY BASED MEASURES A HIGHER VALUE AMONGST THE TREATMENT GROUP ACTUALLY EQUATES TO A DECREASE IN ANXIETY THERE VALUES NEED TO BE INVERTED (get opposite sign)
+
+```{r outcome signs, echo=FALSE, message=FALSE}
+data$H.d[which(data$high_better == "yes" & data$my.behaviour == "ANXIETY")]<-data$H.d[which(data$high_better == "yes" & data$my.behaviour == "ANXIETY")] * -1
+data$H.d[which(data$high_better == "no" & data$my.behaviour == "EXPLORATION")]<-data$H.d[which(data$high_better == "no" & data$my.behaviour == "EXPLORATION")] * -1
+data$H.d[which(data$high_better == "no" & data$my.behaviour == "ACTIVITY")]<-data$H.d[which(data$high_better == "no" & data$my.behaviour == "ACTIVITY")] * -1
+```
+
+7. save the main data and data subsets
+--------------------------------------------------------------
+```{r save and split, echo=FALSE, message=FALSE}
+
+# save the main processed data file
+write.table(data, file="data/main_data_processed.csv", sep=",", col.names=names(data), row.names=F)
+
+# split the main processed data by treatment and outcomes and save into a separate files
+cal.plus.data<-data[which(data$treatment=="calorie+"),]
+cal.neg.data<-data[which(data$treatment=="calorie-"),]
+pro.neg.data<-data[which(data$treatment=="protein-"),]
+
+write.table(cal.plus.data[which(cal.plus.data$my.behaviour == "ACTIVITY"),], file="data/Cal.Plus.Act.csv", sep=",", col.names=names(data), row.names=F)
+write.table(cal.neg.data[which(cal.neg.data$my.behaviour == "ACTIVITY"),], file="data/Cal.Neg.Act.csv", sep=",", col.names=names(data), row.names=F)
+write.table(pro.neg.data[which(pro.neg.data$my.behaviour == "ACTIVITY"),], file="data/Pro.Neg.Act.csv", sep=",", col.names=names(data), row.names=F)
+
+write.table(cal.plus.data[which(cal.plus.data$my.behaviour == "EXPLORATION"),], file="data/Cal.Plus.Exp.csv", sep=",", col.names=names(data), row.names=F)
+write.table(cal.neg.data[which(cal.neg.data$my.behaviour == "EXPLORATION"),], file="data/Cal.Neg.Exp.csv", sep=",", col.names=names(data), row.names=F)
+write.table(pro.neg.data[which(pro.neg.data$my.behaviour == "EXPLORATION"),], file="data/Pro.Neg.Exp.csv", sep=",", col.names=names(data), row.names=F)
+
+write.table(cal.plus.data[which(cal.plus.data$my.behaviour == "ANXIETY"),], file="data/Cal.Plus.Anx.csv", sep=",", col.names=names(data), row.names=F)
+write.table(cal.neg.data[which(cal.neg.data$my.behaviour == "ANXIETY"),], file="data/Cal.Neg.Anx.csv", sep=",", col.names=names(data), row.names=F)
+write.table(pro.neg.data[which(pro.neg.data$my.behaviour == "ANXIETY"),], file="data/Pro.Neg.Anx.csv", sep=",", col.names=names(data), row.names=F)
+
+```
+

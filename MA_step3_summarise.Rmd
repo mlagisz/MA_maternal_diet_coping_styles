@@ -1,0 +1,380 @@
+R script for:
+MA on the effects of maternal nutrition on offsprong's coping styles
+
+STEP 3: more extensive data summaries - tables and plots
+========================================================
+
+1. Data upload  
+--------------
+```{r load, echo=FALSE, message=FALSE}
+rm(list=ls())
+getRversion()
+options(scipen=100)
+
+library(metafor)
+library(psych)
+
+#main_data <- read.csv("data/main_data_processed.csv") #main data table - all subsets together
+#names(data)
+#str(data)
+
+load("data/Z_data_list.Rdata") #list of data frames for the 9 subsets
+
+#to select a data subset, use: 
+#data<-Z_data_list[[1]]
+```
+
+2. Table with numbers of effect sizes and levels within potential random effects
+--------------------------------------------------------------------------------
+```{r table ES n, echo=FALSE, message=FALSE}
+
+dats<-as.data.frame(array(NA, c(15,4)))
+names(dats)<-c("","Cal.Plus", "Cal.Neg", "Pro.Neg")
+dats[,1]<-rep(c("n", "strain", "study", "experiments", "dams"), 3)
+
+data<-Z_data_list[[1]]
+dats[1,2]<-length(data$H.d)
+dats[2,2]<-length(unique(data$strain))
+dats[3,2]<-length(unique(data$study_ID))
+dats[4,2]<-length(unique(data$animal_ID))
+dats[5,2]<-length(unique(data$dam_ID))
+
+data<-Z_data_list[[2]]
+dats[6,2]<-length(data$H.d)
+dats[7,2]<-length(unique(data$strain))
+dats[8,2]<-length(unique(data$study_ID))
+dats[9,2]<-length(unique(data$animal_ID))
+dats[10,2]<-length(unique(data$dam_ID))
+
+data<-Z_data_list[[3]]
+dats[11,2]<-length(data$H.d)
+dats[12,2]<-length(unique(data$strain))
+dats[13,2]<-length(unique(data$study_ID))
+dats[14,2]<-length(unique(data$animal_ID))
+dats[15,2]<-length(unique(data$dam_ID))
+
+data<-Z_data_list[[4]]
+dats[1,3]<-length(data$H.d)
+dats[2,3]<-length(unique(data$strain))
+dats[3,3]<-length(unique(data$study_ID))
+dats[4,3]<-length(unique(data$animal_ID))
+dats[5,3]<-length(unique(data$dam_ID))
+
+data<-Z_data_list[[5]]
+dats[6,3]<-length(data$H.d)
+dats[7,3]<-length(unique(data$strain))
+dats[8,3]<-length(unique(data$study_ID))
+dats[9,3]<-length(unique(data$animal_ID))
+dats[10,3]<-length(unique(data$dam_ID))
+
+data<-Z_data_list[[6]]
+dats[11,3]<-length(data$H.d)
+dats[12,3]<-length(unique(data$strain))
+dats[13,3]<-length(unique(data$study_ID))
+dats[14,3]<-length(unique(data$animal_ID))
+dats[15,3]<-length(unique(data$dam_ID))
+
+data<-Z_data_list[[7]]
+dats[1,4]<-length(data$H.d)
+dats[2,4]<-length(unique(data$strain))
+dats[3,4]<-length(unique(data$study_ID))
+dats[4,4]<-length(unique(data$animal_ID))
+dats[5,4]<-length(unique(data$dam_ID))
+
+data<-Z_data_list[[8]]
+dats[6,4]<-length(data$H.d)
+dats[7,4]<-length(unique(data$strain))
+dats[8,4]<-length(unique(data$study_ID))
+dats[9,4]<-length(unique(data$animal_ID))
+dats[10,4]<-length(unique(data$dam_ID))
+
+data<-Z_data_list[[9]]
+dats[11,4]<-length(data$H.d)
+dats[12,4]<-length(unique(data$strain))
+dats[13,4]<-length(unique(data$study_ID))
+dats[14,4]<-length(unique(data$animal_ID))
+dats[15,4]<-length(unique(data$dam_ID))
+
+dats
+
+behs<-rep(c("Act","Exp","Anx"),each=5)
+behs
+dats<-cbind(behs,dats)
+dats
+names(dats)<-sub("Var.2","Unique",names(dats))
+
+write.csv(dats,"tables/Summary_table_N_ES_split_v1.csv")
+
+### Alternative table version:
+
+dats2<-lapply(Z_data_list,function(x) {
+    c(paste("Nstudies = ", length(unique(x$study_ID))), 
+    paste("Nstrains = ", length(unique(x$strain))), 
+    paste("Nexperiments = ", length(unique(x$animal_ID))), 
+    paste("N ES = ", length(x$H.d)),
+    paste("N ES for sex ", names(table(x$sex))," = ", table(x$sex)),
+    paste("N ES for ", names(table(x$night.day))," = ", table(x$night.day))         ) })
+ #,
+
+#     paste("Manip. value median:", median(x$nom_manip_val)),
+#     paste("Manip. value mean (+-SD):", round(mean(x$nom_manip_val),2)," (+-",round(sd(x$nom_manip_val),2),")"),
+#     paste("Manip. value range:", "[",range(x$nom_manip_val)[1],",",range(x$nom_manip_val)[2],"]")
+#    )#c         })
+
+
+lapply(dats2, length)
+maxLen <- max(sapply(dats2, length)) #check max list element numbers
+dats3 <- lapply(dats2, function(x){ c(x, rep(NA, maxLen))[1:maxLen]}) # create a new list with elements padded out with NAs
+dats4 <- do.call(rbind, dats3)
+
+rownames(dats4) <- c("Cal.Plus.Act","Cal.Plus.Exp","Cal.Plus.Anx", "Cal.Neg.Act","Cal.Neg.Exp","Cal.Neg.Anx","Pro.Neg.Act","Pro.Neg.Exp","Pro.Neg.Anx")
+colnames(dats4) <- c("Nstudies","Nstrains","Nexperiments","NES","NES by sex","NES by sex","NES by sex","NES by sex","NES by day/night","NES by day/night")
+dats4 #some are shifted if missing! - fix in the final table
+
+write.csv(dats4,"tables/Summary_table_N_ES_split_v2.csv")
+
+dats4 <- t(dats4) #transpose and save
+write.csv(dats4,"tables/Summary_table_N_ES_split_v3.csv")
+
+# par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+# dats2 <- lapply(data_list,function(x) { hist(x$nom_manip_val) }) #can't use same xlims for all graphs - should do it in packs of 3 of the same type
+```
+
+3. Plot distributions of continous predictors as histograms and as lines
+--------------------------------------------------------------------------------
+```{r plot cont distr, echo=FALSE, message=FALSE}
+#USE: data<-Z_data_list[[9]]
+
+#nominal manipulation value
+pdf(file="plots/Rplot_hist_nom_manip_val.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- Z_data_list[[1]]
+hist(data$nom_manip_val, main="Cal.Plus.Act",xlim=c(0,10),ylim=c(0,80),xlab="",ylab="Frequency")
+data <- Z_data_list[[2]]
+hist(data$nom_manip_val, main="Cal.Plus.Exp",xlim=c(0,10),ylim=c(0,80),xlab="",ylab="Frequency")
+data <- Z_data_list[[3]]
+hist(data$nom_manip_val, main="Cal.Plus.Anx",xlim=c(0,10),ylim=c(0,80),xlab="nom_manip_val",ylab="Frequency")
+data <- Z_data_list[[4]]
+hist(data$nom_manip_val, main="Cal.Neg.Act",xlim=c(30,80),ylim=c(0,80),xlab="",ylab="")
+data <- Z_data_list[[5]]
+hist(data$nom_manip_val, main="Cal.Neg.Exp",xlim=c(30,80),ylim=c(0,80),xlab="",ylab="")
+data <- Z_data_list[[6]]
+hist(data$nom_manip_val, main="Cal.Neg.Anx",xlim=c(30,80),ylim=c(0,80),xlab="nom_manip_val",ylab="")
+data <- Z_data_list[[7]]
+hist(data$nom_manip_val, main="Pro.Neg.Act",xlim=c(0,60),ylim=c(0,80),xlab="",ylab="")
+data <- Z_data_list[[8]]
+hist(data$nom_manip_val, main="Pro.Neg.Exp",xlim=c(0,60),ylim=c(0,80),xlab="",ylab="")
+data <- Z_data_list[[9]]
+hist(data$nom_manip_val, main="Pro.Neg.Anx",xlim=c(0,60),ylim=c(0,80),xlab="nom_manip_val",ylab="")
+
+dev.off()
+
+#offspring response age
+
+pdf(file="plots/Rplot_hist_offspr_age.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- Z_data_list[[1]]
+hist(data$response_age_dPP, main="Cal.Plus.Act",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="Frequency")
+data <- Z_data_list[[2]]
+hist(data$response_age_dPP, main="Cal.Plus.Exp",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="Frequency")
+data <- Z_data_list[[3]]
+hist(data$response_age_dPP, main="Cal.Plus.Anx",xlim=c(0,500),ylim=c(0,80),xlab="response_age_dPP",ylab="Frequency")
+data <- Z_data_list[[4]]
+hist(data$response_age_dPP, main="Cal.Neg.Act",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="")
+data <- Z_data_list[[5]]
+hist(data$response_age_dPP, main="Cal.Neg.Exp",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="")
+data <- Z_data_list[[6]]
+hist(data$response_age_dPP, main="Cal.Neg.Anx",xlim=c(0,500),ylim=c(0,80),xlab="response_age_dPP",ylab="")
+data <- Z_data_list[[7]]
+hist(data$response_age_dPP, main="Pro.Neg.Act",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="")
+data <- Z_data_list[[8]]
+hist(data$response_age_dPP, main="Pro.Neg.Exp",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="")
+data <- Z_data_list[[9]]
+hist(data$response_age_dPP, main="Pro.Neg.Anx",xlim=c(0,500),ylim=c(0,80),xlab="response_age_dPP",ylab="")
+
+dev.off()
+
+# line plot for the start, end and duration of the maternal treatment
+
+pdf(file="plots/Rplot_timing_lines.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- Z_data_list[[1]]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Plus.Act")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[2]]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Plus.Exp")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[3]]
+plot(1, type="n", yaxt="n", xlab="days", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Plus.Anx")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data<- Z_data_list[[4]]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Neg.Act")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[5]]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Neg.Exp")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[6]]
+plot(1, type="n", yaxt="n", xlab="days", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Neg.Anx")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[7]]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Pro.Neg.Act")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data<- Z_data_list[[8]]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Pro.Neg.Exp")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[9]]
+plot(1, type="n", yaxt="n", xlab="days", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Pro.Neg.Anx")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+
+dev.off()
+
+# line plot for the start, end and duration of the maternal treatment - ordered version
+
+pdf(file="plots/Rplot_timing_lines_ordered.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- Z_data_list[[1]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Plus.Act")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[2]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Plus.Exp")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[3]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="days", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Plus.Anx")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[4]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Neg.Act")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[5]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Neg.Exp")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[6]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="days", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Cal.Neg.Anx")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[7]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Pro.Neg.Act")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[8]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Pro.Neg.Exp")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[9]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="days", ylab="",xlim=c(-100,60),ylim=c(0,110), main="Pro.Neg.Anx")
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+
+dev.off()
+
+
+# single plot for a subset:
+# par(mfcol=c(1,1),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+# data <- Z_data_list[[1]]
+# plot(1, type="n", yaxt="n", xlab="days", ylab="",xlim=c(-100,60),ylim=c(0,100))
+# segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+# abline(v=0, lty=3)
+# abline(v=22, lty=3)
+# abline(v=43, lty=3)
+```
+
+4. Plot funnel plots for raw data by subset
+--------------------------------------------------------------------------------
+```{r funnels raw, echo=FALSE, message=FALSE}
+
+pdf(file="plots/Rplot_raw_funnels.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- Z_data_list[[1]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="", ylab="Precision (1 / SE.d)", main="Cal.Plus.Act")
+abline(v=0, lwd=0.5)
+data <- Z_data_list[[2]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="", ylab="Precision (1 / SE.d)", main="Cal.Plus.Exp")
+abline(v=0, lwd=0.5)
+data <- Z_data_list[[3]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="Hedge's d", ylab="Precision (1 / SE.d)", main="Cal.Plus.Anx")
+abline(v=0, lwd=0.5)
+data <- Z_data_list[[4]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="", ylab="", main="Cal.Neg.Act")
+abline(v=0, lwd=0.5)
+data <- Z_data_list[[5]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="", ylab="", main="Cal.Neg.Exp")
+abline(v=0, lwd=0.5)
+data <- Z_data_list[[6]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="Hedge's d", ylab="", main="Cal.Neg.Anx")
+abline(v=0, lwd=0.5)
+data <- Z_data_list[[7]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="", ylab="", main="Pro.Neg.Act")
+abline(v=0, lwd=0.5)
+data <- Z_data_list[[8]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="", ylab="",  main="Pro.Neg.Exp")
+abline(v=0, lwd=0.5)
+data <- Z_data_list[[9]]
+plot(jitter(data$H.d), jitter(1/data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), xlab="Hedge's d", ylab="", main="Pro.Neg.Anx")
+abline(v=0, lwd=0.5)
+
+dev.off()
+```
+

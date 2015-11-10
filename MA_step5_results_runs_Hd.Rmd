@@ -1,0 +1,2195 @@
+R script for:
+MA on the effects of maternal nutrition on offsprong's coping styles
+
+STEP 5: extracting model results from MCMCglmm parallel runs
+========================================================
+  
+1. Start  
+--------------
+
+```{r start, echo=FALSE, message=FALSE}
+rm(list=ls())
+getRversion()
+options(scipen=100)
+
+library(MCMCglmm)
+
+load("data/Z_data_list.Rdata") ####upload data in a list format: for the 9 subsets
+
+Z_data_list[[2]] <- NULL #exclude subset data2 from the data list - carefull the indexes will shuffle by 1!!!
+
+```
+
+2. Cal.Plus.Act (sub1) results
+--------------------------------------------------------------------------------
+
+Model 1 (null/intercept)
+
+```{r Cal.Plus.Act M1, echo=FALSE, message=FALSE}
+load("runs/M1.1_sub1.Rdata")
+m1 <- model
+load("runs/M1.2_sub1.Rdata")
+m2 <- model
+load("runs/M1.3_sub1.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+df <- Z_data_list[[1]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalPlusAct_M1.csv")
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_CalPlusAct_M1.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalPlusAct_M1.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalPlusAct_M1.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 3 (full)
+
+```{r Cal.Plus.Act M3, echo=FALSE, message=FALSE}
+load("runs/M3.1_sub1.Rdata")
+m1 <- model
+load("runs/M3.2_sub1.Rdata")
+m2 <- model
+load("runs/M3.3_sub1.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m1
+#summary(chosen)
+
+df <- Z_data_list[[1]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalPlusAct_M3.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+write.table(" Fixed Effects Table:","tables/results_table_CalPlusAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalPlusAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalPlusAct_M3.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_CalPlusAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalPlusAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalPlusAct_M3.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+3. Cal.Plus.Anx (sub2) results
+--------------------------------------------------------------------------------
+
+Model 1 (intercept)
+
+```{r Cal.Plus.Anx M1, echo=FALSE, message=FALSE}
+load("runs/M1.1_sub2.Rdata")
+m1<-model
+load("runs/M1.2_sub2.Rdata")
+m2<-model
+load("runs/M1.3_sub2.Rdata")
+m3<-model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m2
+#summary(chosen)
+
+df <- Z_data_list[[2]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalPlusAnx_M1.csv")
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_CalPlusAnx_M1.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalPlusAnx_M1.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalPlusAnx_M1.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 3 (full)
+
+```{r Cal.Plus.Anx M3, echo=FALSE, message=FALSE}
+load("runs/M3.1_sub2.Rdata")
+m1 <- model
+load("runs/M3.2_sub2.Rdata")
+m2 <- model
+load("runs/M3.3_sub2.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m1
+#summary(chosen)
+
+df <- Z_data_list[[2]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalPlusAnx_M3.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+write.table(" Fixed Effects Table:","tables/results_table_CalPlusAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalPlusAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalPlusAnx_M3.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_CalPlusAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalPlusAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalPlusAnx_M3.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+4. Cal.Neg.Act (sub3) results
+--------------------------------------------------------------------------------
+
+Model 1 (intercept)
+
+```{r Cal.Neg.Act M1, echo=FALSE, message=FALSE}
+load("runs/M1.1_sub3.Rdata")
+m1<-model
+load("runs/M1.2_sub3.Rdata")
+m2<-model
+load("runs/M1.3_sub3.Rdata")
+m3<-model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m1
+#summary(chosen)
+
+df <- Z_data_list[[3]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalNegAct_M1.csv")
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_CalNegAct_M1.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegAct_M1.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegAct_M1.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 3 (full)
+
+```{r Cal.Neg.Act M3, echo=FALSE, message=FALSE}
+load("runs/M3.1_sub3.Rdata")
+m1 <- model
+load("runs/M3.2_sub3.Rdata")
+m2 <- model
+load("runs/M3.3_sub3.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+df <- Z_data_list[[3]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalNegAct_M3.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+write.table(" Fixed Effects Table:","tables/results_table_CalNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegAct_M3.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_CalNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegAct_M3.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+5. Cal.Neg.Exp (sub4) results
+--------------------------------------------------------------------------------
+
+Model 1 (intercept)
+
+```{r Cal.Neg.Exp M1, echo=FALSE, message=FALSE}
+load("runs/M1.1_sub4.Rdata")
+m1<-model
+load("runs/M1.2_sub4.Rdata")
+m2<-model
+load("runs/M1.3_sub4.Rdata")
+m3<-model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+df <- Z_data_list[[4]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalNegExp_M1.csv")
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_CalNegExp_M1.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegExp_M1.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegExp_M1.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 3 (full)
+
+```{r Cal.Neg.Exp M3, echo=FALSE, message=FALSE}
+load("runs/M3.1_sub4.Rdata")
+m1 <- model
+load("runs/M3.2_sub4.Rdata")
+m2 <- model
+load("runs/M3.3_sub4.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+df <- Z_data_list[[4]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalNegExp_M3.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+write.table(" Fixed Effects Table:","tables/results_table_CalNegExp_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegExp_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegExp_M3.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_CalNegExp_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegExp_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegExp_M3.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+6. Cal.Neg.Anx (sub5) results
+--------------------------------------------------------------------------------
+
+Model 1 (intercept)
+
+```{r Cal.Neg.Anx M1, echo=FALSE, message=FALSE}
+load("runs/M1.1_sub5.Rdata")
+m1<-model
+load("runs/M1.2_sub5.Rdata")
+m2<-model
+load("runs/M1.3_sub5.Rdata")
+m3<-model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m2
+#summary(chosen)
+
+df <- Z_data_list[[5]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalNegAnx_M1.csv")
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_CalNegAnx_M1.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegAnx_M1.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegAnx_M1.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 3 (full)
+
+```{r Cal.Neg.Anx M3, echo=FALSE, message=FALSE}
+load("runs/M3.1_sub5.Rdata")
+m1 <- model
+load("runs/M3.2_sub5.Rdata")
+m2 <- model
+load("runs/M3.3_sub5.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+df <- Z_data_list[[5]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_CalNegAnx_M3.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+write.table(" Fixed Effects Table:","tables/results_table_CalNegAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegAnx_M3.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_CalNegAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_CalNegAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_CalNegAnx_M3.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+7. Pro.Neg.Act (sub6) results
+--------------------------------------------------------------------------------
+
+Model 1 (intercept)
+
+```{r Pro.Neg.Act M1, echo=FALSE, message=FALSE}
+load("runs/M1.1_sub6.Rdata")
+m1<-model
+load("runs/M1.2_sub6.Rdata")
+m2<-model
+load("runs/M1.3_sub6.Rdata")
+m3<-model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+df <- Z_data_list[[6]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegAct_M1.csv")
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_ProNegAct_M1.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAct_M1.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAct_M1.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 2 (strains)
+
+```{r Pro.Neg.Act M2, echo=FALSE, message=FALSE}
+load("runs/M2.1_sub6.Rdata")
+m1 <- model
+load("runs/M2.2_sub6.Rdata")
+m2 <- model
+load("runs/M2.3_sub6.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m1
+summary(chosen) # 6 strains
+
+df <- Z_data_list[[6]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegAct_M2.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+res_df <- res_df[c(5,6,3,1,2,4),] #reorder strains
+rownames(res_df) <- c("Rat Sprague-Dawley","Rat Wistar","Rat Holzman","Mouse C57BL/6J","Mouse CrL:CD","Mouse MF1")
+write.table(" Fixed Effects Table:","tables/results_table_ProNegAct_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAct_M2.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df<-res_df[-(dim(res_df)[1]-1),]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_ProNegAct_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAct_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAct_M2.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 3 (full)
+
+```{r Pro.Neg.Act M3, echo=FALSE, message=FALSE}
+load("runs/M3.1_sub6.Rdata")
+m1 <- model
+load("runs/M3.2_sub6.Rdata")
+m2 <- model
+load("runs/M3.3_sub6.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+#select a run with lowest DIC
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC))
+chosen <- m2
+#summary(chosen)
+
+df <- Z_data_list[[6]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegAct_M3.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+write.table(" Fixed Effects Table:","tables/results_table_ProNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAct_M3.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_ProNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAct_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAct_M3.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+8. Pro.Neg.Exp (sub7) results
+--------------------------------------------------------------------------------
+
+Model 1 (intercept)
+
+```{r Pro.Neg.Exp M1, echo=FALSE, message=FALSE}
+load("runs/M1.1_sub7.Rdata")
+m1<-model
+load("runs/M1.2_sub7.Rdata")
+m2<-model
+load("runs/M1.3_sub7.Rdata")
+m3<-model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m2
+#summary(chosen)
+
+df <- Z_data_list[[7]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegExp_M1.csv")
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_ProNegExp_M1.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegExp_M1.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegExp_M1.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 2 (strains)
+
+```{r Pro.Neg.Exp M2, echo=FALSE, message=FALSE}
+load("runs/M2.1_sub7.Rdata")
+m1 <- model
+load("runs/M2.2_sub7.Rdata")
+m2 <- model
+load("runs/M2.3_sub7.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m1
+summary(chosen) #4 strains: Holzman, MF1, Sprague-Dawley, Wistar
+
+df <- Z_data_list[[7]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegExp_M2.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+res_df <- res_df[c(3,4,1,2),] #reorder strains
+rownames(res_df) <- c("Rat Sprague-Dawley","Rat Wistar","Rat Holzman","Mouse MF1")
+write.table(" Fixed Effects Table:","tables/results_table_ProNegExp_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegExp_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegExp_M2.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df<-res_df[-(dim(res_df)[1]-1),]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_ProNegExp_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegExp_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegExp_M2.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 3 (full)
+
+```{r Pro.Neg.Exp M3, echo=FALSE, message=FALSE}
+load("runs/M3.1_sub7.Rdata")
+m1 <- model
+load("runs/M3.2_sub7.Rdata")
+m2 <- model
+load("runs/M3.3_sub7.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+#select a run with lowest DIC
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC))
+chosen <- m2
+#summary(chosen)
+
+df <- Z_data_list[[7]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegExp_M3.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+write.table(" Fixed Effects Table:","tables/results_table_ProNegExp_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegExp_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegExp_M3.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_ProNegExp_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegExp_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegExp_M3.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+9. Pro.Neg.Anx (sub8) results
+--------------------------------------------------------------------------------
+
+Model 1 (intercept)
+
+```{r Pro.Neg.Anx M1, echo=FALSE, message=FALSE}
+load("runs/M1.1_sub8.Rdata")
+m1<-model
+load("runs/M1.2_sub8.Rdata")
+m2<-model
+load("runs/M1.3_sub8.Rdata")
+m3<-model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+df <- Z_data_list[[8]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegAnx_M1.csv")
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_ProNegAnx_M1.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAnx_M1.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAnx_M1.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 2 (strains)
+
+```{r Pro.Neg.Anx M2, echo=FALSE, message=FALSE}
+load("runs/M2.1_sub8.Rdata")
+m1 <- model
+load("runs/M2.2_sub8.Rdata")
+m2 <- model
+load("runs/M2.3_sub8.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m2
+summary(chosen) #2 strains: Sprague-Dawley, Wistar
+
+df <- Z_data_list[[8]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegAnx_M2.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+rownames(res_df) <- c("Rat Sprague-Dawley","Rat Wistar")
+write.table(" Fixed Effects Table:","tables/results_table_ProNegAnx_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAnx_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAnx_M2.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df<-res_df[-(dim(res_df)[1]-1),]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_ProNegAnx_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAnx_M2.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAnx_M2.csv", sep=",", col.names = FALSE, append = TRUE)
+```
+
+Model 3 (full)
+
+```{r Pro.Neg.Anx M3, echo=FALSE, message=FALSE}
+load("runs/M3.1_sub8.Rdata")
+m1 <- model
+load("runs/M3.2_sub8.Rdata")
+m2 <- model
+load("runs/M3.3_sub8.Rdata")
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)])) 
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+#select a run with lowest DIC
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC))
+chosen <- m2
+#summary(chosen)
+
+df <- Z_data_list[[8]]
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total") 
+rownames(res_df) <- "mean(SD)[mode]"
+write.csv(res_df,"tables/results_table_ProNegAnx_M3.csv")
+
+### fixed effects - moderators
+names <- attr(chosen$Sol,"dimnames")[[2]][1:chosen$Fixed$nfl] #chosen$Fixed$nfl = number of fixed effects
+mod <- posterior.mode(chosen$Sol)[1:chosen$Fixed$nfl]
+av <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,1]
+sd <- summary(chosen$Sol[,1:chosen$Fixed$nfl])$statistics[,2]
+HPDlo <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,1]
+HPDhi <- HPDinterval(chosen$Sol[,1:chosen$Fixed$nfl])[,2]
+res_df <- format(round(data.frame(Mode=mod,Mean=av,SD=sd,Lower=HPDlo,Upper=HPDhi),3), nsmall = 3)
+write.table(" Fixed Effects Table:","tables/results_table_ProNegAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAnx_M3.csv", sep=",", col.names = FALSE, append=TRUE)
+
+### random effects
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(res_df),3), nsmall = 3)
+rownames(res_df) <- c("study_ID","animal_ID","residuals")
+write.table(" Random Effects Table:","tables/results_table_ProNegAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_ProNegAnx_M3.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_ProNegAnx_M3.csv", sep=",", col.names = FALSE, append = TRUE)
+
+
+##CHECK IF DIFFERENCE BETWEEN MALES AND FEMALES IS SIGNIFICANT
+
+attr(chosen$Sol,"dimnames")[[2]] #"factor(sex)m"         "factor(sex)both"      "factor(sex)f"
+summary(chosen)
+
+# fixed effects intercept 2 (for the level 2 of the factor)
+diff_m_f <- chosen$Sol[,"factor(sex)m"]-chosen$Sol[,"factor(sex)f"] ##run results for the difference between m and f intercepts
+posterior.mode (diff_m_f)
+summary(diff_m_f)
+HPDinterval(diff_m_f) #SIGNIFICANT!
+#diff <- c(posterior.mode(diff_m_f),summary(diff_m_f)$statistics[1],summary(diff_m_f)$statistics[2],HPDinterval(diff_m_f)[1],HPDinterval(diff_m_f)[2]) 
+
+```
+
+21. Moment method for Cal.Plus.Exp (N=2)
+----------------------------------------
+(code by Alistair)
+```{r moment}
+data <- read.csv("data/Cal.Plus.Exp.csv")
+weights <- 1/data$SE.d^2
+effects <- data$H.d
+mu <- sum(effects * weights) / sum(weights)
+var <- 1 / sum(weights)
+t <- mu / sqrt(var)
+CI <- sqrt(var) * qt(0.05/2, df=1)
+
+mu+CI # -3.619431
+mu    #  1.129344
+mu-CI #  5.878119
+
+```
+
+22. Results from MCMCglmm runs WITH Parameter expanded prior! 
+--------------------------------------------------------------------------------
+Model 1 (null/intercept) was run for 8 data subsets (3 chains each). 
+We extract results and save as tables and save all in a single csv file for copying and pasting.
+
+```{r par.exp.runs M1, echo=FALSE, message=FALSE}
+
+write.table("Results from parameter expanded MCMCglmm runs - Model 1 (null/intercept) for 8 data subsets","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE)
+
+### Cal.Neg.Act (CR - Activity)
+df <- Z_data_list[[3]]
+
+load(paste("runs/M1.1_sub_expanded3.Rdata",sep=""))
+m1 <- model
+load(paste("runs/M1.2_sub_expanded3.Rdata",sep=""))
+m2 <- model
+load(paste("runs/M1.3_sub_expanded3.Rdata",sep=""))
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m2
+#summary(chosen)
+
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.table("Cal.Neg.Act (CR - Activity)","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+
+### Cal.Neg.Exp (CR - Exploration)
+df <- Z_data_list[[4]]
+
+load(paste("runs/M1.1_sub_expanded4.Rdata",sep=""))
+m1 <- model
+load(paste("runs/M1.2_sub_expanded4.Rdata",sep=""))
+m2 <- model
+load(paste("runs/M1.3_sub_expanded4.Rdata",sep=""))
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m2
+#summary(chosen)
+
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.table("Cal.Neg.Exp (CR - Exploration)","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+
+### Cal.Neg.Anx (CR - Anxiety)
+df <- Z_data_list[[5]]
+
+load(paste("runs/M1.1_sub_expanded5.Rdata",sep=""))
+m1 <- model
+load(paste("runs/M1.2_sub_expanded5.Rdata",sep=""))
+m2 <- model
+load(paste("runs/M1.3_sub_expanded5.Rdata",sep=""))
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m1
+#summary(chosen)
+
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.table("Cal.Neg.Anx (CR - Anxiety)","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+
+### Pro.Neg.Act (PR - Activity)
+df <- Z_data_list[[6]]
+
+load(paste("runs/M1.1_sub_expanded6.Rdata",sep=""))
+m1 <- model
+load(paste("runs/M1.2_sub_expanded6.Rdata",sep=""))
+m2 <- model
+load(paste("runs/M1.3_sub_expanded6.Rdata",sep=""))
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m2
+#summary(chosen)
+
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.table("Pro.Neg.Act (PR - Activity)","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+
+
+### Pro.Neg.Exp (PR - Exploration)
+df <- Z_data_list[[7]]
+
+load(paste("runs/M1.1_sub_expanded7.Rdata",sep=""))
+m1 <- model
+load(paste("runs/M1.2_sub_expanded7.Rdata",sep=""))
+m2 <- model
+load(paste("runs/M1.3_sub_expanded7.Rdata",sep=""))
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.table("Pro.Neg.Exp (PR - Exploration)","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+
+### Pro.Neg.Anx (PR - Anxiety)
+df <- Z_data_list[[8]]
+
+load(paste("runs/M1.1_sub_expanded8.Rdata",sep=""))
+m1 <- model
+load(paste("runs/M1.2_sub_expanded8.Rdata",sep=""))
+m2 <- model
+load(paste("runs/M1.3_sub_expanded8.Rdata",sep=""))
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.table("Pro.Neg.Anx (PR - Anxiety)","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+
+### Cal.Plus.Act (OB - Activity)
+df <- Z_data_list[[1]]
+
+load(paste("runs/M1.1_sub_expanded1.Rdata",sep=""))
+m1 <- model
+load(paste("runs/M1.2_sub_expanded1.Rdata",sep=""))
+m2 <- model
+load(paste("runs/M1.3_sub_expanded1.Rdata",sep=""))
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m3
+#summary(chosen)
+
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.table("Cal.Plus.Act (OB - Activity)","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+
+### Cal.Plus.Anx (OB - Anxiety)
+df <- Z_data_list[[2]]
+
+load(paste("runs/M1.1_sub_expanded2.Rdata",sep=""))
+m1 <- model
+load(paste("runs/M1.2_sub_expanded2.Rdata",sep=""))
+m2 <- model
+load(paste("runs/M1.3_sub_expanded2.Rdata",sep=""))
+m3 <- model
+rm(model)
+
+#check model convergence
+gelman.diag(list(m1$Sol[,1],m2$Sol[,1],m3$Sol[,1])) #The shrink factors should be below 1.05 - StudyID too high
+gelman.diag(list(m1$VCV[,c(1,2)],m2$VCV[,c(1,2)],m3$VCV[,c(1,2)]))
+gelman.diag(list(m1$Deviance,m2$Deviance,m3$Deviance))
+#check chain autocorrelation
+autocorr(m1$Sol[,c(4)])
+autocorr(m1$VCV[,c(1:2)])
+autocorr(m2$Sol[,c(4)])
+autocorr(m2$VCV[,c(1:2)])
+autocorr(m3$Sol[,c(4)])
+autocorr(m3$VCV[,c(1:2)])
+#extract and summarise DIC
+mean(c(m1$DIC, m2$DIC, m3$DIC)) 
+range(c(m1$DIC, m2$DIC, m3$DIC))  
+print(c(m1$DIC, m2$DIC, m3$DIC))
+which(c(m1$DIC,m2$DIC,m3$DIC)==min(m1$DIC,m2$DIC,m3$DIC)) #select a run with lowest DIC
+chosen <- m2
+#summary(chosen)
+
+### heterogeneity and variances
+WI <- na.omit(1/df$H.d_Var_combined) 
+s2I <- sum(WI*(length(WI)-1))/(sum(WI)^2-sum(WI^2)) # typical sampling (measurement) error variance (sigma2m)
+total_var <- chosen$VCV[,"study_ID"]+chosen$VCV[,"animal_ID"]+chosen$VCV[,"units"]+s2I # total variance (sigma2t)
+total_het <- (total_var-s2I)/total_var # total heterogeneity I2
+#for pasting into Excel table
+study_ID <- round(c(summary(chosen$VCV[,"study_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"study_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"study_ID"]/total_var)*100),1)
+animal_ID <- round(c(summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"animal_ID"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"animal_ID"]/total_var)*100),1)
+units <- round(c(summary(chosen$VCV[,"units"]/total_var)$statistics[1]*100,summary(chosen$VCV[,"units"]/total_var)$statistics[2]*100,posterior.mode(chosen$VCV[,"units"]/total_var)*100),1)
+total <- round(c(summary(total_het)$statistics[1]*100,summary(total_het)$statistics[2]*100,posterior.mode(total_het)*100),1)
+res_df <- t(data.frame(study_ID=study_ID,animal_ID=animal_ID,units=units,total=total))
+# version with mean and range for DIC
+res_df<-format(res_df, nsmall = 2)
+DICs <- c(m1$DIC, m2$DIC, m3$DIC)
+DICmean <- format(round(mean(DICs),2), nsmall = 2)
+DICrange <- paste0(format(round(range(DICs)[1],2), nsmall = 2)," - ",format(round(range(DICs)[2],2), nsmall = 2))
+res_df <- t(c(paste0(DICmean, "(", DICrange, ")"),
+            paste0(res_df[1,1],"(",res_df[1,2],")[",res_df[1,3],"]"),
+            paste0(res_df[2,1],"(",res_df[2,2],")[",res_df[2,3],"]"),
+            paste0(res_df[3,1],"(",res_df[3,2],")[",res_df[3,3],"]"),
+            paste0(res_df[4,1],"(",res_df[4,2],")[",res_df[4,3],"]")))
+colnames(res_df) <- c("DIC (DIC range)","I2study","I2animal","I2residual","I2total")
+rownames(res_df) <- "mean(SD)[mode]"
+write.table("Cal.Plus.Anx (OB - Anxiety)","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+### fixed effects (overall intercept)
+interc <- c(posterior.mode(chosen$Sol[,1]),summary(chosen$Sol[,1])$statistics[1],summary(chosen$Sol)$statistics[2],HPDinterval(chosen$Sol[,1])[1],HPDinterval(chosen$Sol[,1])[2])
+### random effects
+# save in a file as a table
+Mode <- posterior.mode(chosen$VCV)
+Mean <- summary(chosen$VCV)$statistics[,1]
+SD <- summary(chosen$VCV)$statistics[,2]
+Lower <- HPDinterval(chosen$VCV)[,1]
+Upper <- HPDinterval(chosen$VCV)[,2]
+res_df <- data.frame(Mode=Mode,Mean=Mean,SD=SD,Lower=Lower,Upper=Upper)
+res_df <- res_df[-3,]
+res_df <- format(round(rbind(interc,res_df),3), nsmall = 3)
+rownames(res_df) <- c("intercept","study_ID","animal_ID","residuals")
+write.table("Effects Table:","tables/results_table_8subsets_M1_expanded_runs.csv", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(t(c(" ","Mode","Mean","SD","Lower","Upper")),"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, row.names = FALSE, append = TRUE)
+write.table(res_df,"tables/results_table_8subsets_M1_expanded_runs.csv", sep=",", col.names = FALSE, append = TRUE)
+
+```
+
+

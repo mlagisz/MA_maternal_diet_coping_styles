@@ -1,0 +1,786 @@
+R script for:
+MA on the effects of maternal nutrition on offsprong's coping styles
+
+STEP 2: data summaries, exploratory plotting etc. 
+========================================================
+
+1. data upload  
+--------------
+```{r load, echo=FALSE, message=FALSE}
+rm(list=ls())
+getRversion()
+options(scipen=100)
+
+library(metafor)
+library(psych)
+library(Matrix)
+
+data <- read.csv("data/main_data_processed.csv")
+names(data)
+#str(data)
+```
+
+2. preliminary funnel plots - data split by manipulation type and behavior
+----------------
+```{r clean, echo=FALSE, message=FALSE}
+
+# split the main processed data by treatment and outcomes and save into a separate files
+cal.plus.data <- data[which(data$treatment=="calorie+"),]
+cal.neg.data <- data[which(data$treatment=="calorie-"),]
+pro.neg.data <- data[which(data$treatment=="protein-"),]
+
+### NOTE: in the funnel plots below some of the summary statistics are wrong: CR act. probaly opposite sign, Anx. smaller value! 
+#pdf(file="plots/Rplot_preliminary_funnels.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,1),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+
+### Plus Calorie
+plot(jitter(cal.plus.data$H.d), jitter(1/cal.plus.data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1,3), main="Plus Calorie", xlab="", ylab="Precision (1 / SE.d)", col=cal.plus.data$my.behaviour)
+abline(v=0, lwd=0.5)
+legend(-4, 3, unique(data$my.behaviour), col=c(unique(cal.plus.data$my.behaviour)), pch=1)
+#MA (exclude exploration? [cal.plus.data$my.behaviour!="EXPLORATION"])
+effects <- cal.plus.data$H.d
+errors <- cal.plus.data$SE.d
+mods <- cal.plus.data$my.behaviour
+model <- rma(yi=effects, sei=errors, mods=~factor(mods)-1)
+points(model$b, c(1.0, 1.2, 1.4), pch=18, cex=2, col=c(unique(cal.plus.data$my.behaviour)))
+arrows(model$ci.lb,  c(1.0, 1.2, 1.4), model$ci.ub,  c(1.0, 1.2, 1.4), code=0, col=c(unique(cal.plus.data$my.behaviour)))
+text(3,3, round(model$I2, 3), cex=1.5)
+
+### Negative Calorie
+plot(jitter(cal.neg.data$H.d), jitter(1/cal.neg.data$SE.d), cex=0.75, xlim=c(-4,4), ylim=c(1, 3), main="Negative Calorie", xlab="", ylab="Precision (1 / SE.d)", col=cal.neg.data$my.behaviour)
+abline(v=0, lwd=0.5)
+#MA
+effects <- cal.neg.data$H.d
+errors <- cal.neg.data$SE.d
+mods <- cal.neg.data$my.behaviour
+model <- rma(yi=effects, sei=errors, mods=~factor(mods)-1)
+points(model$b, c(1.0, 1.2, 1.4), pch=18, cex=2, col=c(unique(cal.neg.data$my.behaviour)))
+arrows(model$ci.lb,  c(1.0, 1.2, 1.4), model$ci.ub,  c(1.0, 1.2, 1.4), code=0, col=c(unique(cal.neg.data$my.behaviour)))
+text(3,3, round(model$I2,3), cex=1.5)
+
+### Negative Protein
+plot(jitter(pro.neg.data$H.d), jitter(1/pro.neg.data$SE.d), cex=0.75, xlim=c(-5,5), ylim=c(0, 6), main="Negative Protein", xlab="Hedge's d", ylab="Precision (1 / SE.d)", col=pro.neg.data$my.behaviour)
+abline(v=0, lwd=0.5)
+#MA
+effects < -pro.neg.data$H.d
+errors <- pro.neg.data$SE.d
+mods <- pro.neg.data$my.behaviour
+model <- rma(yi=effects, sei=errors, mods=~factor(mods)-1)
+points(model$b, c(0.1, 0.4, 0.8), pch=18, cex=2, col=c(unique(pro.neg.data$my.behaviour)))
+arrows(model$ci.lb,  c(0.1, 0.4, 0.8), model$ci.ub,  c(0.1, 0.4, 0.8), code=0, col=c(unique(pro.neg.data$my.behaviour)))
+text(4,6, round(model$I2, 3), cex=1.5)
+
+#dev.off()
+```
+
+3. check for missing ES and predictor values
+------------------------------------------------------------------------------------
+```{r check NA, echo=FALSE, message=FALSE}
+#check for missing values
+table(is.na(data$H.d))
+table(is.na(data$SE.d))
+table(is.na(data$sex))
+table(is.na(data$nom_manip_val)) 
+table(is.na(data$dam_diet_start_dPC))
+table(is.na(data$dam_diet_end_dPC))
+table(is.na(data$response_age_dPP))
+table(is.na(data$night.day))
+###No missing values!
+```
+
+4. load data subsets
+------------------------------------------------------------------------------------
+```{r load subsets, echo=FALSE, message=FALSE}
+main_data <- data
+
+#Overfeeding
+data1 <- read.csv("data/Cal.Plus.Act.csv")
+data2 <- read.csv("data/Cal.Plus.Exp.csv")
+data3 <- read.csv("data/Cal.Plus.Anx.csv")
+#Caloric restriction
+data4 <- read.csv("data/Cal.Neg.Act.csv")
+data5 <- read.csv("data/Cal.Neg.Exp.csv")
+data6 <- read.csv("data/Cal.Neg.Anx.csv")
+#Protein restriction
+data7 <- read.csv("data/Pro.Neg.Act.csv")
+data8 <- read.csv("data/Pro.Neg.Exp.csv")
+data9 <- read.csv("data/Pro.Neg.Anx.csv")
+```
+
+5. Colinearity matrix and scatterplots for continuous moderators within each subset
+------------------------------------------------------------------------------------
+```{r colinearity, echo=FALSE, message=FALSE}
+par(mfrow=c(1,1),bty="l",lwd=1)
+
+pdf(file="plots/Rplot_scatter_Cal.Plus.Act.pdf",width=6,height=6,family="sans",pointsize=10)
+pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Cal.Plus.Act (n=33)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data1)
+dev.off()
+#pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Cal.Plus.Exp (n=2)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data2) #N=2!
+pdf(file="plots/Rplot_scatter_Cal.Plus.Anx.pdf",width=6,height=6,family="sans",pointsize=10)
+pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Cal.Plus.Anx (n=50)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data3)
+dev.off()
+
+pdf(file="plots/Rplot_scatter_Cal.Neg.Act.pdf",width=6,height=6,family="sans",pointsize=10)
+pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Cal.Neg.Act (n=24)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data4)
+dev.off()
+pdf(file="plots/Rplot_scatter_Cal.Neg.Exp.pdf",width=6,height=6,family="sans",pointsize=10)
+pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Cal.Neg.Exp (n=10)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data5)
+dev.off()
+pdf(file="plots/Rplot_scatter_Cal.Neg.Anx.pdf",width=6,height=6,family="sans",pointsize=10)
+pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Cal.Neg.Anx (n=33)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data6)
+dev.off()
+
+pdf(file="plots/Rplot_scatter_Pro.Neg.Act.pdf",width=6,height=6,family="sans",pointsize=10)
+pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Pro.Neg.Act (n=107)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data7)
+dev.off()
+pdf(file="plots/Rplot_scatter_Pro.Neg.Exp.pdf",width=6,height=6,family="sans",pointsize=10)
+pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Pro.Neg.Exp (n=39)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data8)
+dev.off()
+pdf(file="plots/Rplot_scatter_Pro.Neg.Anx.pdf",width=6,height=6,family="sans",pointsize=10)
+pairs.panels(~nom_manip_val+dam_diet_start_dPC+dam_diet_end_dPC+response_age_dPP,main="Pro.Neg.Anx (n=92)",lm=TRUE,ellipses=FALSE,jiggle=TRUE,data=data9)
+dev.off()
+```
+
+6. Bubble plots for the main continuous predictors, for each subset
+------------------------------------------------------------------------------------
+```{r bubble plots, echo=FALSE, message=FALSE}
+
+#nominal manipulation value
+
+pdf(file="plots/Rplot_bubble_nom_manip_val.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- data1
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="Cal.Plus.Act",xlim=c(1,10),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- data2
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="Cal.Plus.Exp",xlim=c(1,10),ylim=c(-5,3))
+#abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- data3
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="nom_manip_val",ylab="Effect size (Hedge's d)",main="Cal.Plus.Anx",xlim=c(1,10),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- data4
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Cal.Neg.Act",xlim=c(30,75),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- data5
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Cal.Neg.Exp",xlim=c(30,75),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- data6
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="nom_manip_val",ylab="",main="Cal.Neg.Anx",xlim=c(30,75),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- data7
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Pro.Neg.Act",xlim=c(0,50),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- data8
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Pro.Neg.Exp",xlim=c(0,50),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- data9
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="nom_manip_val",ylab="",main="Pro.Neg.Anx",xlim=c(0,50),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+
+dev.off()
+
+# manipulation start time
+
+pdf(file="plots/Rplot_bubble_dam_diet_start_dPC.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- data1
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="Cal.Plus.Act",xlim=c(-100,30),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+data <- data2
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="Cal.Plus.Exp",xlim=c(-100,30),ylim=c(-5,3))
+#abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+data <- data3
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="dam_diet_start_dPC",ylab="Effect size (Hedge's d)",main="Cal.Plus.Anx",xlim=c(-100,30),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+data <- data4
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Cal.Neg.Act",xlim=c(-100,30),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+data <- data5
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Cal.Neg.Exp",xlim=c(-100,30),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+data <- data6
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="dam_diet_start_dPC",ylab="",main="Cal.Neg.Anx",xlim=c(-100,30),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+data <- data7
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Pro.Neg.Act",xlim=c(-100,30),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+data <- data8
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Pro.Neg.Exp",xlim=c(-100,30),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+data <- data9
+symbols(data$dam_diet_start_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="dam_diet_start_dPC",ylab="",main="Pro.Neg.Anx",xlim=c(-100,30),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_start_dPC, na.action=na.omit), lwd=2)
+
+dev.off()
+
+# manipulation end time
+
+pdf(file="plots/Rplot_bubble_dam_diet_end_dPC.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- data1
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="Cal.Plus.Act",xlim=c(-40,60),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+data <- data2
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="Cal.Plus.Exp",xlim=c(-40,60),ylim=c(-5,3))
+#abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+data <- data3
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="dam_diet_end_dPC",ylab="Effect size (Hedge's d)",main="Cal.Plus.Anx",xlim=c(-40,60),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+data <- data4
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Cal.Neg.Act",xlim=c(-40,60),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+data <- data5
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Cal.Neg.Exp",xlim=c(-40,60),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+data <- data6
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="dam_diet_end_dPC",ylab="",main="Cal.Neg.Anx",xlim=c(-40,60),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+data <- data7
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Pro.Neg.Act",xlim=c(-40,60),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+data <- data8
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Pro.Neg.Exp",xlim=c(-40,60),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+data <- data9
+symbols(data$dam_diet_end_dPC,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="dam_diet_end_dPC",ylab="",main="Pro.Neg.Anx",xlim=c(-40,60),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$dam_diet_end_dPC, na.action=na.omit), lwd=2)
+
+dev.off()
+
+# offspring age at response measurement
+
+pdf(file="plots/Rplot_bubble_response_age_dPP.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+data <- data1
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="Cal.Plus.Act",xlim=c(0,500),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+data <- data2
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="Cal.Plus.Exp",xlim=c(0,500),ylim=c(-5,3))
+#abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+data <- data3
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="response_age_dPP",ylab="Effect size (Hedge's d)",main="Cal.Plus.Anx",xlim=c(0,500),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+data <- data4
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Cal.Neg.Act",xlim=c(0,500),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+data <- data5
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Cal.Neg.Exp",xlim=c(0,500),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+data <- data6
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="response_age_dPP",ylab="",main="Cal.Neg.Anx",xlim=c(0,500),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+data <- data7
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Pro.Neg.Act",xlim=c(0,500),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+data <- data8
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="Pro.Neg.Exp",xlim=c(0,500),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+data <- data9
+symbols(data$response_age_dPP,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="response_age_dPP",ylab="",main="Pro.Neg.Anx",xlim=c(0,500),ylim=c(-5,3))
+abline(lm(data$H.d ~ data$response_age_dPP, na.action=na.omit), lwd=2)
+
+dev.off()
+```
+
+7. Box plots for the main categorical predictors: sex, strain, timing (night.day), for each subset
+---------------------------------------------------------------------------------------------------
+```{r box plots, echo=FALSE, message=FALSE}
+
+# H.d by sex
+
+pdf(file="plots/Rplot_boxplots_sex.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+plot(H.d~sex,data=data1,xlab="",main="Cal.Plus.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~sex,data=data2,xlab="",main="Cal.Plus.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~sex,data=data3,xlab="",main="Cal.Plus.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~sex,data=data4,xlab="",main="Cal.Neg.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~sex,data=data5,xlab="",main="Cal.Neg.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~sex,data=data6,xlab="",main="Cal.Neg.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~sex,data=data7,xlab="",main="Pro.Neg.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~sex,data=data8,xlab="",main="Pro.Neg.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~sex,data=data9,xlab="",main="Pro.Neg.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+
+dev.off()
+
+# H.d by strain
+
+pdf(file="plots/Rplot_boxplots_strain.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+plot(H.d~strain,data=data1,xlab="",main="Cal.Plus.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~strain,data=data2,xlab="",main="Cal.Plus.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~strain,data=data3,xlab="",main="Cal.Plus.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~strain,data=data4,xlab="",main="Cal.Neg.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~strain,data=data5,xlab="",main="Cal.Neg.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~strain,data=data6,xlab="",main="Cal.Neg.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~strain,data=data7,xlab="",main="Pro.Neg.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~strain,data=data8,xlab="",main="Pro.Neg.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~strain,data=data9,xlab="",main="Pro.Neg.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+
+dev.off()
+
+# H.d by timing (night.day)
+
+pdf(file="plots/Rplot_boxplots_nightday.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,1,1.75),oma=c(0,1,0,0))
+plot(H.d~night.day,data=data1,xlab="",main="Cal.Plus.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~night.day,data=data2,xlab="",main="Cal.Plus.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~night.day,data=data3,xlab="",main="Cal.Plus.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~night.day,data=data4,xlab="",main="Cal.Neg.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~night.day,data=data5,xlab="",main="Cal.Neg.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~night.day,data=data6,xlab="",main="Cal.Neg.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~night.day,data=data7,xlab="",main="Pro.Neg.Act",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~night.day,data=data8,xlab="",main="Pro.Neg.Exp",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+plot(H.d~night.day,data=data9,xlab="",main="Pro.Neg.Anx",ylim=c(-5,3))
+abline(h=0, lwd=0.5)
+
+dev.off()
+```
+
+8. Make a list form the data subsets
+---------------------------------------------------------------------------------------------------
+```{r subsets list, echo=FALSE, message=FALSE}
+################################## DATASETS & VARIABLES
+#put all subsets in a list:
+data_list <- list(data1=data1,data2=data2,data3=data3,data4=data4,data5=data5,data6=data6,data7=data7,data8=data8,data9=data9)
+#str(data_list[[1]])
+#names(data_list[[1]])
+```
+
+9. Check factors overlaps and alternative predictor variables
+---------------------------------------------------------------------------------------------------
+```{r overlap checks, echo=FALSE, message=FALSE}
+#check study/strain overlap: - probably in all cases just use study_ID and no strain, as they are largely overlapping
+lapply(data_list,function(x) table(x$strain,x$study_ID))
+#check animal/dam overlap: - in all cases just use animal_ID and no dam_ID, as they are largely overlapping
+lapply(data_list,function(x) table(x$animal_ID,x$dam_ID))
+#check comp_ID/animal overlap: - in all cases just use comp_ID and no animal_ID, as they are largely overlapping, so dont use any apart of study_ID!
+lapply(data_list,function(x) table(x$animal_ID,x$comp_ID))
+
+
+### CONSIDER AGE AS CATEGORICAL VARIABLE: young (<200 dPP) / old
+lapply(data_list,function(x) table(cut(x$response_age_dPP, c(0,200,600), labels=c("young","old"))))
+#worth doing for data4, data7, data8
+data4$response_age_cat <- cut(data4$response_age_dPP, c(0,200,600), labels=c("young","old")) #"young","old"
+data7$response_age_cat <- cut(data7$response_age_dPP, c(0,200,600), labels=c("young","old")) #"young","old"
+data8$response_age_cat <- cut(data8$response_age_dPP, c(0,200,600), labels=c("young","old")) #"young","old"
+
+### CONSIDER TREATMENT TIMING AS CATEGORICAL VARIABLE: pre-conception only/ gestation only/ lactation only / overlapping?
+lapply(data_list,function(x) table(cut(x$dam_diet_start_dPC, c(-100,0,22,43), labels=c("preconception","gestation","lactation"))))
+#data1$start_cat <- cut(data1$dam_diet_start_dPC, c(-100,0,22,43), labels=c("preconception","gestation","lactation"))
+
+lapply(data_list,function(x) table(cut(x$dam_diet_end_dPC, c(-100,0,22,43), labels=c("preconception","gestation","lactation"))))
+#data1$end_cat <- cut(data1$dam_diet_end_dPC, c(-100,0,22,43), labels=c("preconception","gestation","lactation"))
+
+#start versus end of treatment:
+start_end_table <- lapply(data_list,function(x) table(cut(x$dam_diet_start_dPC, c(-100,0,22,43), labels=c("s.preconception","s.gestation","s.lactation")),cut(x$dam_diet_end_dPC, c(-100,0,22,43), labels=c("e.preconception","e.gestation","e.lactation"))))
+```
+
+10. Predictor scaling
+---------------------------------------------------------------------------------------------------
+```{r scaling, echo=FALSE, message=FALSE}
+#scaling continuous moderators: nom_manip_val, dam_diet_start_dPC, dam_diet_end_dPC, response_age_dPP
+Z_data_list <- lapply(data_list, function(x) {
+  Z_nom_manip_val <- scale(x$nom_manip_val)
+  Z_nom_manip_val2 <- scale(x$nom_manip_val2)
+  Z_dam_diet_start_dPC <- scale(x$dam_diet_start_dPC)
+  Z_dam_diet_end_dPC <- scale(x$dam_diet_end_dPC)
+  Z_response_age_dPP <- scale(x$response_age_dPP)
+  Z_delay <- scale(x$response_age_dPP-x$dam_diet_end_dPC)
+  cbind(x,Z_nom_manip_val,Z_dam_diet_start_dPC,Z_dam_diet_end_dPC,Z_response_age_dPP,Z_delay)
+  })
+names(Z_data_list[[1]]) #chack column names
+
+save(Z_data_list,file="data/Z_data_list.Rdata")
+#rm(Z_data_list)
+```
+
+11. Preliminary meta-analysis with METAFOR package
+---------------------------------------------------------------------------------------------------
+```{r metafor, echo=FALSE, message=FALSE}
+load("data/Z_data_list.Rdata") ####CAN START FROM HERE IN THE FUTURE
+
+### MODEL BUILDING OVERWIEV:
+# M1 - intercept-only, with random factors, run for all data subset (except if N ES <= 2) 
+# M2 - strain model, run only if many more studies than strains available
+# M3 Depending on N ES, in the full model we add moderators in this order: 
+   # sex (if balanced: >1 levels, >2 data points), 
+   # Z_nom_manip_val, (except for Cal.Plus may not make sese becouse some self selection diets used)
+   # Z_dam_diet_start_dPC,
+   # Z_response_age_dPP (if no "outliers", e.g. single data points for eldery animals),
+   # Z_dam_diet_end_dPC (usually correlated with the start date)
+
+# by data subset: 
+
+#### Cal.Plus.Act
+Zdata <- Z_data_list[[1]] # N=33
+#Zdata$Z_nom_manip_val2<-scale(Zdata$nom_manip_val2)
+names(Zdata)
+## ANALYSES WITHOUT CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN") #sigma = 0 for animal ID 
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_dam_diet_start_dPC+Z_delay-1, data=Zdata, method="REML", struct="UN")
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_dam_diet_start_dPC-1, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### positive males & negative manip. value (strange: more fat, activity more similar to the control group), sex effect disappeares if manip_value is not used
+## ANALYSES WITH CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+m <- matrix(0,nrow = dim(Zdata)[1],ncol = dim(Zdata)[1])# create square matrix matching N of ES, filled with zeros
+rownames(m) <- Zdata$comp_ID 
+colnames(m) <- Zdata$comp_ID 
+shared_coord <- which(Zdata$con_ID %in% Zdata$con_ID[duplicated(Zdata$con_ID)]==TRUE) # find start and end coordinates for the subsets
+combinations <- do.call("rbind", tapply(shared_coord, Zdata[shared_coord,"con_ID"], function(x) t(combn(x,2)))) # matrix of combinations of coordinates for each experiment with shared control
+# calculate covariance values between Hd values at the positions in shared_list and place them on the matrix
+for (i in 1:dim(combinations)[1]){
+  p1 <- combinations[i,1]
+  p2 <- combinations[i,2]
+  p1_p2_cov <- 1/Zdata[p1,"con_n"] + (Zdata[p1,"H.d"]*Zdata[p2,"H.d"]) / (2*Zdata[p1,"N_total"])
+  m[p1,p2] <- p1_p2_cov
+  m[p2,p1] <- p1_p2_cov
+}
+# add the diagonal - use Zdata$H.d_Var_combined as matrix diagonal
+diag(m) <- Zdata$H.d_Var_combined # m is the variance-covariance matrix to be used in the test run
+# M1: random-effect model(intercept-only model)
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN") #sigma = 0 for animal ID 
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+#res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_dam_diet_start_dPC+Z_delay-1, data=Zdata, method="REML", struct="UN")
+#res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_dam_diet_start_dPC-1, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### positive males & negative manip. value (strange: more fat, activity more similar to the control group), sex effect disappeares if manip_value is not used
+
+
+#### Cal.Plus.Anx
+Zdata <- Z_data_list[[3]] # N=50
+## ANALYSES WITHOUT CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+## ANALYSES WITH CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+m <- matrix(0,nrow = dim(Zdata)[1],ncol = dim(Zdata)[1])# create square matrix matching N of ES, filled with zeros
+rownames(m) <- Zdata$comp_ID 
+colnames(m) <- Zdata$comp_ID 
+shared_coord <- which(Zdata$con_ID %in% Zdata$con_ID[duplicated(Zdata$con_ID)]==TRUE) # find start and end coordinates for the subsets
+combinations <- do.call("rbind", tapply(shared_coord, Zdata[shared_coord,"con_ID"], function(x) t(combn(x,2)))) # matrix of combinations of coordinates for each experiment with shared control
+# calculate covariance values between Hd values at the positions in shared_list and place them on the matrix
+for (i in 1:dim(combinations)[1]){
+  p1 <- combinations[i,1]
+  p2 <- combinations[i,2]
+  p1_p2_cov <- 1/Zdata[p1,"con_n"] + (Zdata[p1,"H.d"]*Zdata[p2,"H.d"]) / (2*Zdata[p1,"N_total"])
+  m[p1,p2] <- p1_p2_cov
+  m[p2,p1] <- p1_p2_cov
+}
+# add the diagonal - use Zdata$H.d_Var_combined as matrix diagonal
+diag(m) <- Zdata$H.d_Var_combined # m is the variance-covariance matrix to be used in the test run
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=m, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+
+
+#### Cal.Neg.Act
+Zdata <- Z_data_list[[4]] # N=24, mostly males
+## ANALYSES WITHOUT CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN")
+summary(res) ### NEGATIVE ESTIMATE!,
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC-1, data=Zdata, method="REML", struct="UN")
+summary(res) # males NEGATIVE
+## ANALYSES WITH CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+m <- matrix(0,nrow = dim(Zdata)[1],ncol = dim(Zdata)[1])# create square matrix matching N of ES, filled with zeros
+rownames(m) <- Zdata$comp_ID 
+colnames(m) <- Zdata$comp_ID 
+shared_coord <- which(Zdata$con_ID %in% Zdata$con_ID[duplicated(Zdata$con_ID)]==TRUE) # find start and end coordinates for the subsets
+combinations <- do.call("rbind", tapply(shared_coord, Zdata[shared_coord,"con_ID"], function(x) t(combn(x,2)))) # matrix of combinations of coordinates for each experiment with shared control
+# calculate covariance values between Hd values at the positions in shared_list and place them on the matrix
+for (i in 1:dim(combinations)[1]){
+  p1 <- combinations[i,1]
+  p2 <- combinations[i,2]
+  p1_p2_cov <- 1/Zdata[p1,"con_n"] + (Zdata[p1,"H.d"]*Zdata[p2,"H.d"]) / (2*Zdata[p1,"N_total"])
+  m[p1,p2] <- p1_p2_cov
+  m[p2,p1] <- p1_p2_cov
+}
+# add the diagonal - use Zdata$H.d_Var_combined as matrix diagonal
+diag(m) <- Zdata$H.d_Var_combined # m is the variance-covariance matrix to be used in the test run
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=m, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN")
+summary(res) ### NEGATIVE ESTIMATE!,
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC-1, data=Zdata, method="REML", struct="UN")
+summary(res) # males NEGATIVE
+
+
+#### Cal.Neg.Exp
+Zdata <- Z_data_list[[5]] # N=10 (almost all males)
+## ANALYSES WITHOUT CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~Z_response_age_dPP, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~Z_delay, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING 
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~Z_dam_diet_start_dPC, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~Z_dam_diet_end_dPC, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~Z_nom_manip_val, data=Zdata, method="REML", struct="UN")
+summary(res) ### manip_val NEGATIVE, but driven by a single data point!
+## ANALYSES WITH CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+m <- matrix(0,nrow = dim(Zdata)[1],ncol = dim(Zdata)[1])# create square matrix matching N of ES, filled with zeros
+rownames(m) <- Zdata$comp_ID 
+colnames(m) <- Zdata$comp_ID 
+shared_coord <- which(Zdata$con_ID %in% Zdata$con_ID[duplicated(Zdata$con_ID)]==TRUE) # find start and end coordinates for the subsets
+combinations <- do.call("rbind", tapply(shared_coord, Zdata[shared_coord,"con_ID"], function(x) t(combn(x,2)))) # matrix of combinations of coordinates for each experiment with shared control
+# calculate covariance values between Hd values at the positions in shared_list and place them on the matrix
+for (i in 1:dim(combinations)[1]){
+  p1 <- combinations[i,1]
+  p2 <- combinations[i,2]
+  p1_p2_cov <- 1/Zdata[p1,"con_n"] + (Zdata[p1,"H.d"]*Zdata[p2,"H.d"]) / (2*Zdata[p1,"N_total"])
+  m[p1,p2] <- p1_p2_cov
+  m[p2,p1] <- p1_p2_cov
+}
+# add the diagonal - use Zdata$H.d_Var_combined as matrix diagonal
+diag(m) <- Zdata$H.d_Var_combined # m is the variance-covariance matrix to be used in the test run
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=m, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~Z_response_age_dPP, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~Z_delay, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING 
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~Z_dam_diet_start_dPC, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~Z_dam_diet_end_dPC, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~Z_nom_manip_val, data=Zdata, method="REML", struct="UN")
+summary(res) ### manip_val NEGATIVE, but driven by a single data point!
+
+
+
+#### Cal.Neg.Anx
+Zdata <- Z_data_list[[6]] # N=33
+## ANALYSES WITHOUT CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### negative nominal manip. value (more likely to be more active at 50CR than 70CR), negative response age (more likely to be more active when younger, -> smaller effect with age)
+## ANALYSES WITH CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+m <- matrix(0,nrow = dim(Zdata)[1],ncol = dim(Zdata)[1])# create square matrix matching N of ES, filled with zeros
+rownames(m) <- Zdata$comp_ID 
+colnames(m) <- Zdata$comp_ID 
+shared_coord <- which(Zdata$con_ID %in% Zdata$con_ID[duplicated(Zdata$con_ID)]==TRUE) # find start and end coordinates for the subsets
+combinations <- do.call("rbind", tapply(shared_coord, Zdata[shared_coord,"con_ID"], function(x) t(combn(x,2)))) # matrix of combinations of coordinates for each experiment with shared control
+# calculate covariance values between Hd values at the positions in shared_list and place them on the matrix
+for (i in 1:dim(combinations)[1]){
+  p1 <- combinations[i,1]
+  p2 <- combinations[i,2]
+  p1_p2_cov <- 1/Zdata[p1,"con_n"] + (Zdata[p1,"H.d"]*Zdata[p2,"H.d"]) / (2*Zdata[p1,"N_total"])
+  m[p1,p2] <- p1_p2_cov
+  m[p2,p1] <- p1_p2_cov
+}
+# add the diagonal - use Zdata$H.d_Var_combined as matrix diagonal
+diag(m) <- Zdata$H.d_Var_combined # m is the variance-covariance matrix to be used in the test run
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=m, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### negative nominal manip. value (more likely to be more anxious at 50CR than 70CR), negative response age (more likely to be more anxious when younger, -> smaller effect with age)
+
+
+#### Pro.Neg.Act
+Zdata <- Z_data_list[[7]] # N=107
+## ANALYSES WITHOUT CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN") #sigma = 0.04 for animal ID 
+summary(res) ### NOTHING
+# M2: mixed-effect model with strain as fixed factor
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(strain)-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### Wistar NEGATIVE
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP+Z_dam_diet_end_dPC-1, data=Zdata, method="REML", struct="UN")
+summary(res) #NOTHING
+## ANALYSES WITH CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+m <- matrix(0,nrow = dim(Zdata)[1],ncol = dim(Zdata)[1])# create square matrix matching N of ES, filled with zeros
+rownames(m) <- Zdata$comp_ID 
+colnames(m) <- Zdata$comp_ID 
+shared_coord <- which(Zdata$con_ID %in% Zdata$con_ID[duplicated(Zdata$con_ID)]==TRUE) # find start and end coordinates for the subsets
+combinations <- do.call("rbind", tapply(shared_coord, Zdata[shared_coord,"con_ID"], function(x) t(combn(x,2)))) # matrix of combinations of coordinates for each experiment with shared control
+# calculate covariance values between Hd values at the positions in shared_list and place them on the matrix
+for (i in 1:dim(combinations)[1]){
+  p1 <- combinations[i,1]
+  p2 <- combinations[i,2]
+  p1_p2_cov <- 1/Zdata[p1,"con_n"] + (Zdata[p1,"H.d"]*Zdata[p2,"H.d"]) / (2*Zdata[p1,"N_total"])
+  m[p1,p2] <- p1_p2_cov
+  m[p2,p1] <- p1_p2_cov
+}
+# add the diagonal - use Zdata$H.d_Var_combined as matrix diagonal
+diag(m) <- Zdata$H.d_Var_combined # m is the variance-covariance matrix to be used in the test run
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=m, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN") #sigma = 0.04 for animal ID 
+summary(res) ### NOTHING
+# M2: mixed-effect model with strain as fixed factor
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(strain)-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### Wistar NEGATIVE
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP+Z_dam_diet_end_dPC-1, data=Zdata, method="REML", struct="UN")
+summary(res) #NOTHING
+
+
+#### Pro.Neg.Exp
+Zdata <- Z_data_list[[8]] # N=39
+## ANALYSES WITHOUT CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN") #sigma = 0.04 for animal ID 
+summary(res) ### NOTHING
+# M2: mixed-effect model with strain as fixed factor
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(strain)-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+## ANALYSES WITH CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+m <- matrix(0,nrow = dim(Zdata)[1],ncol = dim(Zdata)[1])# create square matrix matching N of ES, filled with zeros
+rownames(m) <- Zdata$comp_ID 
+colnames(m) <- Zdata$comp_ID 
+shared_coord <- which(Zdata$con_ID %in% Zdata$con_ID[duplicated(Zdata$con_ID)]==TRUE) # find start and end coordinates for the subsets
+combinations <- do.call("rbind", tapply(shared_coord, Zdata[shared_coord,"con_ID"], function(x) t(combn(x,2)))) # matrix of combinations of coordinates for each experiment with shared control
+# calculate covariance values between Hd values at the positions in shared_list and place them on the matrix
+for (i in 1:dim(combinations)[1]){
+  p1 <- combinations[i,1]
+  p2 <- combinations[i,2]
+  p1_p2_cov <- 1/Zdata[p1,"con_n"] + (Zdata[p1,"H.d"]*Zdata[p2,"H.d"]) / (2*Zdata[p1,"N_total"])
+  m[p1,p2] <- p1_p2_cov
+  m[p2,p1] <- p1_p2_cov
+}
+# add the diagonal - use Zdata$H.d_Var_combined as matrix diagonal
+diag(m) <- Zdata$H.d_Var_combined # m is the variance-covariance matrix to be used in the test run
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=m, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN") #sigma = 0.04 for animal ID 
+summary(res) ### NOTHING
+# M2: mixed-effect model with strain as fixed factor
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(strain)-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+
+
+#### Pro.Neg.Anx
+Zdata <- Z_data_list[[9]] # N=92
+## ANALYSES WITHOUT CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=H.d_Var_combined, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN") #sigma = 0.04 for animal ID 
+summary(res) ### NOTHING
+# M2: mixed-effect model with strain as fixed factor
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(strain)-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=H.d_Var_combined, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP+Z_dam_diet_end_dPC-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### females POSITIVE, males NEGATIVE!
+## ANALYSES WITH CONTROLLING FOR SHARED CONTROL GROUPS (correlated sampling errors)
+m <- matrix(0,nrow = dim(Zdata)[1],ncol = dim(Zdata)[1])# create square matrix matching N of ES, filled with zeros
+rownames(m) <- Zdata$comp_ID 
+colnames(m) <- Zdata$comp_ID 
+shared_coord <- which(Zdata$con_ID %in% Zdata$con_ID[duplicated(Zdata$con_ID)]==TRUE) # find start and end coordinates for the subsets
+combinations <- do.call("rbind", tapply(shared_coord, Zdata[shared_coord,"con_ID"], function(x) t(combn(x,2)))) # matrix of combinations of coordinates for each experiment with shared control
+# calculate covariance values between Hd values at the positions in shared_list and place them on the matrix
+for (i in 1:dim(combinations)[1]){
+  p1 <- combinations[i,1]
+  p2 <- combinations[i,2]
+  p1_p2_cov <- 1/Zdata[p1,"con_n"] + (Zdata[p1,"H.d"]*Zdata[p2,"H.d"]) / (2*Zdata[p1,"N_total"])
+  m[p1,p2] <- p1_p2_cov
+  m[p2,p1] <- p1_p2_cov
+}
+# add the diagonal - use Zdata$H.d_Var_combined as matrix diagonal
+diag(m) <- Zdata$H.d_Var_combined # m is the variance-covariance matrix to be used in the test run
+# M1: random-effect model(intercept-only model)
+#res <- rma.mv(yi=H.d, V=m, data=Zdata, method="REML", struct="UN")
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), data=Zdata, method="REML", struct="UN") #sigma = 0.04 for animal ID 
+summary(res) ### NOTHING
+# M2: mixed-effect model with strain as fixed factor
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(strain)-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### NOTHING
+# M3: Mixed-effect model with some moderators
+res <- rma.mv(yi=H.d, V=m, random=list(~1|study_ID,~1|animal_ID), mods=~factor(sex)+Z_nom_manip_val+Z_dam_diet_start_dPC+Z_response_age_dPP+Z_dam_diet_end_dPC-1, data=Zdata, method="REML", struct="UN")
+summary(res) ### females POSITIVE, males NEGATIVE!
+```
+
+12. Comments
+---------------------------------------------------------------------------------------------------
+Main results:
+1. Generally no effect on the bahaviours, with some exceptions
+2. Some indication of sex-specidic effects
+3. No consistent pattern of moderator influence on the outcomes
+
+(controlling for correlated standard errors does not change the results)
+
+Analysis limiations:
+1. Often small sample sizes in the subsets - restricting numbers of moerators we can simultaniously use in the models.
+2. Limited ranges of moderator values - not good for testing specific hypotheses how they influence the outcomes.
+3. Possible that there are non-linear (e.g. quadratic) effects or interactions among moderators - we cannot account for these due to limited sample sizes and limited moderator value ranges.
+4. Potentially other moderators that should be tested (e.g. time of the day, maternal age, maternal diet composition, offspring post weaning diet composition) - we could not use these either due to the lack of data or limited sample sizes
+
+Recommendations:
+1. more data with more systematic testing of the whole parameter (moderator) range
+2. design experiments as to minimise confounding values, e.g. take into account sex differences
+3. more detailed and rigorous reporting of experimental setups and all results

@@ -1,0 +1,771 @@
+R script for:
+MA on the effects of maternal nutrition on offsprong's coping styles
+
+STEP 7: preparing plots for the MS
+============================================================
+  
+1. Start  
+--------------
+
+```{r start, echo=FALSE, message=FALSE}
+rm(list=ls())
+#getRversion()
+options(scipen=100)
+
+library(MCMCglmm)
+library(meta)
+
+load("data/Z_data_list.Rdata") ####upload data in a list format: for the 9 subsets
+
+#Z_data_list[[2]] <- NULL #exclude subset data2 from the data list - carefull, the indexes will shuffle by 1!!!
+
+```
+
+
+2. forest plots - rearranged 
+--------------------------------------------------------------------------------
+Zero effect size is shown as dashed line.
+Statistically significant effects marked by star.
+
+```{r forest plot}
+varnames_full <- rev(c("Male mean","Mixed-sex mean", "Female mean","Dam dietary manipulation level",
+                "Dam dietary manipulation start time","Offspring age at testing","Dam dietary manipulation end time","Meta-analytic (overall) mean"))
+varnames_models <- rev(c("factor(sex)m","factor(sex)both","factor(sex)f","Z_nom_manip_val","Z_dam_diet_start_dPC","Z_response_age_dPP","Z_dam_diet_end_dPC","intercept"))
+varnames <- as.data.frame(cbind(varnames_models, varnames_full))
+
+#tiff(file="plots/Rplot_forest_plot_v2.tif",width=6.30708661,height=4,res=400,units="in",pointsize=9)
+pdf(file="plots/Rplot_forest_plot_v2.pdf",width=16,height=8,pointsize=14,family="sans",encoding="CP1250")
+
+par(mfcol=c(3,3),mar=c(4,14,2,1),oma=c(0,1,0,0))
+
+
+###### Cal.Neg.Act (sub3)
+### use the tables of extracted runs results, rather than the original runs!
+# get full model results:
+table <- read.csv("tables/results_table_CalNegAct_M3.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 5) # adjust nrows according to the number of moderatorsused !
+# get intercept model results:
+null <- read.csv("tables/results_table_CalNegAct_M1.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) #just read the intercept (overall mean)
+# just get the first row out (the intercept) and attach to the table with full model results:
+table1 <- rbind(table, null[1,])
+table2 <- merge(varnames, table1, by.x = "varnames_models", by.y = "Moderator", incomparables = NA, all = TRUE)
+table2 <- table2[c(4,5,8,6,7,2,1,3),] #re-order
+#table2
+#set shape and size of point estimates 
+Shape <- c(18,rep(16,dim(table2)[1]))
+Size <- c(1.5,rep(1.2,dim(table2)[1]))
+#plot point estimates
+plot(table2$Mean,1:dim(table2)[1],ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="",pch=Shape,cex=Size,cex.axis=.9)
+#add labels
+for (i in 1:length(table2$varnames_full)){  mtext(table2$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+# add segments
+for (i in 1:length(table2$Mean)){  segments(table2$Lower[i],i,table2$Upper[i],i,lwd=1.25)  }
+abline(v=0,lty=3)
+title(main = "a) Caloric restriction - Activity", adj = 0, cex=1.2)
+
+stars<-c("*","","","","","","","")
+for (i in 1:length(stars)){
+  #mtext(stars[i],2,-1,at=i-0.2,las=2,cex=1) #for placing stars on the outer margin
+  text(x = 1, y = i, labels = stars[i], las=2, cex=2)
+}
+
+
+###### Cal.Neg.Exp (sub4)
+### use the tables of extracted runs results, rather than the original runs!
+# get full model results:
+table <- read.csv("tables/results_table_CalNegExp_M3.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) # adjust nrows according to the number of moderatorsused !
+# get intercept model results:
+null <- read.csv("tables/results_table_CalNegExp_M1.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) #just read the intercept (overall mean)
+# just get the first row out (the intercept) and attach to the table with full model results:
+table1 <- rbind(table, null[1,])
+table2 <- merge(varnames, table1, by.x = "varnames_models", by.y = "Moderator", incomparables = NA, all = TRUE)
+table2 <- table2[c(4,5,8,6,7,2,1,3),] #re-order
+#table2
+#set shape and size of point estimates 
+Shape <- c(18,rep(16,dim(table2)[1]))
+Size <- c(1.5,rep(1.2,dim(table2)[1]))
+#plot point estimates
+plot(table2$Mean,1:dim(table2)[1],ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="",pch=Shape,cex=Size,cex.axis=.9)
+#add labels
+for (i in 1:length(table2$varnames_full)){  mtext(table2$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+# add segments
+for (i in 1:length(table2$Mean)){  segments(table2$Lower[i],i,table2$Upper[i],i,lwd=1.25)  }
+abline(v=0,lty=3)
+title(main = "d) Caloric restriction - Exploration", adj = 0, cex=1.2)
+
+stars<-c("","","","","*","","","")
+for (i in 1:length(stars)){
+  #mtext(stars[i],2,-1,at=i-0.2,las=2,cex=1)
+  text(x = 1, y = i, labels = stars[i], las=2, cex=2)
+}
+
+
+###### Cal.Neg.Anx (sub5)
+### use the tables of extracted runs results, rather than the original runs!
+# get full model results:
+table <- read.csv("tables/results_table_CalNegAnx_M3.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 4) # adjust nrows according to the number of moderatorsused !
+# get intercept model results:
+null <- read.csv("tables/results_table_CalNegAnx_M1.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) #just read the intercept (overall mean)
+# just get the first row out (the intercept) and attach to the table with full model results:
+table1 <- rbind(table, null[1,])
+table2 <- merge(varnames, table1, by.x = "varnames_models", by.y = "Moderator", incomparables = NA, all = TRUE)
+table2 <- table2[c(4,5,8,6,7,2,1,3),] #re-order
+#table2
+#set shape and size of point estimates 
+Shape <- c(18,rep(16,dim(table2)[1]))
+Size <- c(1.5,rep(1.2,dim(table2)[1]))
+#plot point estimates
+plot(table2$Mean,1:dim(table2)[1],ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="Hedge's d",pch=Shape,cex=Size,cex.axis=.9)
+#add labels
+for (i in 1:length(table2$varnames_full)){  mtext(table2$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+# add segments
+for (i in 1:length(table2$Mean)){  segments(table2$Lower[i],i,table2$Upper[i],i,lwd=1.25)  }
+abline(v=0,lty=3)
+title(main = "g) Caloric restriction - Anxiety", adj = 0, cex=1.2)
+
+
+###### Pro.Neg.Act (sub6)
+### use the tables of extracted runs results, rather than the original runs!
+# get full model results:
+table <- read.csv("tables/results_table_ProNegAct_M3.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 6) # adjust nrows according to the number of moderatorsused !
+# get intercept model results:
+null <- read.csv("tables/results_table_ProNegAct_M1.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) #just read the intercept (overall mean)
+# just get the first row out (the intercept) and attach to the table with full model results:
+table1 <- rbind(table, null[1,])
+table2 <- merge(varnames, table1, by.x = "varnames_models", by.y = "Moderator", incomparables = NA, all = TRUE)
+table2 <- table2[c(4,5,8,6,7,2,1,3),] #re-order
+#table2
+#set shape and size of point estimates 
+Shape <- c(18,rep(16,dim(table2)[1]))
+Size <- c(1.5,rep(1.2,dim(table2)[1]))
+#plot point estimates
+plot(table2$Mean,1:dim(table2)[1],ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="",pch=Shape,cex=Size,cex.axis=.9)
+#add labels
+#for (i in 1:length(table2$varnames_full)){  mtext(table2$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+# add segments
+for (i in 1:length(table2$Mean)){  segments(table2$Lower[i],i,table2$Upper[i],i,lwd=1.25)  }
+abline(v=0,lty=3)
+title(main = "b) Protein restriction - Activity", adj = 0, cex=1.2)
+
+
+###### Pro.Neg.Exp (sub7)
+### use the tables of extracted runs results, rather than the original runs!
+# get full model results:
+table <- read.csv("tables/results_table_ProNegExp_M3.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 6) # adjust nrows according to the number of moderatorsused !
+# get intercept model results:
+null <- read.csv("tables/results_table_ProNegExp_M1.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) #just read the intercept (overall mean)
+# just get the first row out (the intercept) and attach to the table with full model results:
+table1 <- rbind(table, null[1,])
+table2 <- merge(varnames, table1, by.x = "varnames_models", by.y = "Moderator", incomparables = NA, all = TRUE)
+table2 <- table2[c(4,5,8,6,7,2,1,3),] #re-order
+#table2
+#set shape and size of point estimates 
+Shape <- c(18,rep(16,dim(table2)[1]))
+Size <- c(1.5,rep(1.2,dim(table2)[1]))
+#plot point estimates
+plot(table2$Mean,1:dim(table2)[1],ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="",pch=Shape,cex=Size,cex.axis=.9)
+#add labels
+#for (i in 1:length(table2$varnames_full)){  mtext(table2$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+# add segments
+for (i in 1:length(table2$Mean)){  segments(table2$Lower[i],i,table2$Upper[i],i,lwd=1.25)  }
+abline(v=0,lty=3)
+title(main = "e) Protein restriction - Exploration", adj = 0, cex=1.2)
+
+
+###### Pro.Neg.Anx (sub8)
+### use the tables of extracted runs results, rather than the original runs!
+# get full model results:
+table <- read.csv("tables/results_table_ProNegAnx_M3.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 6) # adjust nrows according to the number of moderatorsused !
+# get intercept model results:
+null <- read.csv("tables/results_table_ProNegAnx_M1.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) #just read the intercept (overall mean)
+# just get the first row out (the intercept) and attach to the table with full model results:
+table1 <- rbind(table, null[1,])
+table2 <- merge(varnames, table1, by.x = "varnames_models", by.y = "Moderator", incomparables = NA, all = TRUE)
+table2 <- table2[c(4,5,8,6,7,2,1,3),] #re-order
+#table2
+#set shape and size of point estimates 
+Shape <- c(18,rep(16,dim(table2)[1]))
+Size <- c(1.5,rep(1.2,dim(table2)[1]))
+#plot point estimates
+plot(table2$Mean,1:dim(table2)[1],ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="Hedge's d",pch=Shape,cex=Size,cex.axis=.9)
+#add labels
+#for (i in 1:length(table2$varnames_full)){  mtext(table2$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+# add segments
+for (i in 1:length(table2$Mean)){  segments(table2$Lower[i],i,table2$Upper[i],i,lwd=1.25)  }
+abline(v=0,lty=3)
+title(main = "h) Protein restriction - Anxiety", adj = 0, cex=1.2)
+
+stars<-c("","","","","","","","*")
+for (i in 1:length(stars)){
+  #mtext(stars[i],2,-1,at=i-0.2,las=2,cex=1)
+  text(x = 1, y = i, labels = stars[i], las=2, cex=2)
+  }
+
+
+###### Cal.Plus.Act (sub1)
+### use the tables of extracted runs results, rather than the original runs!
+# get full model results:
+table <- read.csv("tables/results_table_CalPlusAct_M3.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 3) # adjust nrows according to the number of moderatorsused !
+# get intercept model results:
+null <- read.csv("tables/results_table_CalPlusAct_M1.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) #just read the intercept (overall mean)
+# just get the first row out (the intercept) and attach to the table with full model results:
+table1 <- rbind(table, null[1,])
+table2 <- merge(varnames, table1, by.x = "varnames_models", by.y = "Moderator", incomparables = NA, all = TRUE)
+table2 <- table2[c(4,5,8,6,7,2,1,3),] #re-order
+#table2
+#set shape and size of point estimates 
+Shape <- c(18,rep(16,dim(table2)[1]))
+Size <- c(1.5,rep(1.2,dim(table2)[1]))
+#plot point estimates
+plot(table2$Mean,1:dim(table2)[1],ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="",pch=Shape,cex=Size,cex.axis=.9)
+#add labels
+#for (i in 1:length(table2$varnames_full)){  mtext(table2$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+# add segments
+for (i in 1:length(table2$Mean)){  segments(table2$Lower[i],i,table2$Upper[i],i,lwd=1.25)  }
+abline(v=0,lty=3)
+title(main = "c) Obesogenic - Activity", adj = 0, cex=1.2)
+
+
+###### Cal.Plus.Anx (moment method - only overall result available)
+data <- read.csv("data/Cal.Plus.Exp.csv")
+weights <- 1/data$SE.d^2
+effects <- data$H.d
+mu <- sum(effects * weights) / sum(weights)
+var <- 1 / sum(weights)
+t <- mu / sqrt(var)
+CI <- sqrt(var) * qt(0.05/2, df=1)
+#mu+CI # -3.619431
+#mu    #  1.129344
+#mu-CI #  5.878119
+#plot mean
+plot(mu,1,ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="",pch=Shape,cex=Size,cex.axis=.9)
+# add segments
+segments(mu+CI,1,mu-CI,1,lwd=1.25)
+#add labels
+#for (i in 1:length(varnames$varnames_full)){   mtext(varnames$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+abline(v=0,lty=3)
+title(main = "f) Obesogenic - Exploration", adj = 0, cex=1.2)
+
+
+###### Cal.Plus.Anx (sub2)
+### use the tables of extracted runs results, rather than the original runs!
+# get full model results:
+table <- read.csv("tables/results_table_CalPlusAnx_M3.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 5) # adjust nrows according to the number of moderatorsused !
+# get intercept model results:
+null <- read.csv("tables/results_table_CalPlusAnx_M1.csv", header=FALSE, skip = 4, col.names = c("Moderator","Mode","Mean","SD","Lower","Upper"), nrows = 1) #just read the intercept (overall mean)
+# just get the first row out (the intercept) and attach to the table with full model results:
+table1 <- rbind(table, null[1,])
+table2 <- merge(varnames, table1, by.x = "varnames_models", by.y = "Moderator", incomparables = NA, all = TRUE)
+table2 <- table2[c(4,5,8,6,7,2,1,3),] #re-order
+#table2
+#set shape and size of point estimates 
+Shape <- c(18,rep(16,dim(table2)[1]))
+Size <- c(1.5,rep(1.2,dim(table2)[1]))
+#plot point estimates
+plot(table2$Mean,1:dim(table2)[1],ylab=NA,yaxt="n",bty="n",xlim=c(-5,5),ylim=c(0.25,dim(table2)[1]+.5),xlab="Hedge's d",pch=Shape,cex=Size,cex.axis=.9)
+#add labels
+#for (i in 1:length(table2$varnames_full)){  mtext(table2$varnames_full[i],2,0,at=i,las=2,cex=.7) }
+# add segments
+for (i in 1:length(table2$Mean)){  segments(table2$Lower[i],i,table2$Upper[i],i,lwd=1.25)  }
+abline(v=0,lty=3)
+title(main = "i) Obesogenic - Anxiety", adj = 0, cex=1.2)
+
+dev.off()
+
+
+### Edit the gaps between plots in Adobe Illustrator! (change Myriad font to Zapf Dingbat!)
+```
+
+3. funnel plots on raw data  - rearranged
+--------------------------------------------------------------------------------
+Raw effect size estimates (difference between prenatally manipulated and control offspring groups; Hedge’s d) plotted against their precision (1/SE)
+Overall postrior (meta-analytic) means are shown as solid lines. 
+Zero effect size is shown as dashed line.
+
+```{r funnel raw, echo=FALSE, message=FALSE}
+
+pdf(file="plots/Rplot_funnel_raw_v2.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,2,1),oma=c(0,1,0,0))
+
+###### Cal.Neg.Act (sub3)
+df <- Z_data_list[[4]]
+meta_sub3 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub3, yaxis = "invse", xlab="", ylab="Precision (1/SE)", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2) # contour=c(0.95), col.contour=("lightgrey")
+abline(v=0, lwd=1, lty=2)
+abline(v=-0.705, col="red", lwd=1, lty=1)
+title(main = "a) Caloric restriction - Activity", adj=0)
+
+###### Cal.Neg.Exp (sub4)
+df <- Z_data_list[[5]]
+meta_sub4 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub4, yaxis = "invse", xlab="", ylab="Precision (1/SE)", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2) # contour=c(0.95), col.contour=("lightgrey")
+abline(v=0, lwd=1, lty=2)
+abline(v=-0.382, col="red", lwd=1, lty=1)
+title(main = "d) Caloric restriction - Exploration", adj=0)
+
+###### Cal.Neg.Anx (sub5)
+df <- Z_data_list[[6]]
+meta_sub5 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub5, yaxis = "invse", xlab="Hedge's d", ylab="Precision (1/SE)", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2) # contour=c(0.95), col.contour=("lightgrey")
+abline(v=0, lwd=1, lty=2)
+abline(v=-0.338, col="red", lwd=1, lty=1)
+title(main = "g) Caloric restriction - Anxiety", adj=0)
+
+###### Pro.Neg.Act (sub6)
+df <- Z_data_list[[7]]
+meta_sub6 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub6, yaxis = "invse", xlab="", ylab="", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2) # contour=c(0.95), col.contour=("lightgrey")
+abline(v=0, lwd=1, lty=2)
+abline(v=-0.067, col="red", lwd=1, lty=1)
+title(main = "b) Protein restriction - Activity", adj=0)
+
+###### Pro.Neg.Exp (sub7)
+df <- Z_data_list[[8]]
+meta_sub7 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub7, yaxis = "invse", xlab="", ylab="", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2) # contour=c(0.95), col.contour=("lightgrey")
+abline(v=0, lwd=1, lty=2)
+abline(v=0.007, col="red", lwd=1, lty=1)
+title(main = "e) Protein restriction - Exploration", adj=0)
+
+###### Pro.Neg.Exp (sub8)
+df <- Z_data_list[[9]]
+meta_sub8 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub8, yaxis = "invse", xlab="Hedge's d", ylab="", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2) # contour=c(0.95), col.contour=("lightgrey")
+abline(v=0, lwd=1, lty=2)
+abline(v=0.074, col="red", lwd=1, lty=1)
+title(main = "h) Protein restriction - Anxiety", adj=0)
+
+###### Cal.Plus.Act (sub1)
+df <- Z_data_list[[1]]
+meta_sub1 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub1, yaxis = "invse", xlab="", ylab="", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2) # contour=c(0.95), col.contour=("lightgrey")
+abline(v=0, lwd=1, lty=2)
+abline(v=0.238, col="red", lwd=1, lty=1)
+title(main = "c) Obesogenic - Activity", adj=0)
+
+###### Cal.Plus.Exp
+df <- Z_data_list[[2]]
+meta_sub2 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub2, yaxis = "invse", xlab="", ylab="", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+abline(v=1.129, col="red", lwd=1, lty=1)
+title(main = "f) Obesogenic - Exploration", adj=0)
+
+###### Cal.Plus.Anx (sub2)
+df <- Z_data_list[[3]]
+meta_sub2 <- metagen(df$H.d, sqrt(df$H.d_Var_combined))
+funnel.meta(meta_sub2, yaxis = "invse", xlab="Hedge's d", ylab="", xlim=c(-5,5), ylim=c(0,6), pch=1, level=NULL, comb.fixed=FALSE, comb.random=FALSE, cex=1.2) # contour=c(0.95), col.contour=("lightgrey")
+abline(v=0, lwd=1, lty=2)
+abline(v=-0.173, col="red", lwd=1, lty=1)
+title(main = "i) Obesogenic - Anxiety", adj=0)
+
+dev.off()
+```
+
+4. funnel plots on residuals from full models - rearranged
+--------------------------------------------------------------------------------
+Residual effect sizes from the full model (adjusted for moderators) plotted against their precision (1/SE)
+Zero effect size is shown as dashed line.
+
+```{r funnel res, echo=FALSE, message=FALSE}
+pdf(file="plots/Rplot_funnel_residuals_v2.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,2,1),oma=c(0,1,0,0))
+
+###### Cal.Neg.Act (sub3)
+df <- Z_data_list[[4]]
+load("runs/M3.3_sub3.Rdata") #load best full model results
+model_sub3 <- model
+#next 2 lines are modified for the models controlling for shared control groups
+prec_sub3 <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_sub3 <- df$H.d - predict(model_sub3)
+zes_sub3 <- es_sub3*prec_sub3
+plot(es_sub3,prec_sub3, xlab="", ylab="Precision (1/SE)", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "a) Caloric restriction - Activity", adj=0)
+
+###### Cal.Neg.Exp (sub4)
+df <- Z_data_list[[5]]
+load("runs/M3.3_sub4.Rdata") #load best full model results
+model_sub4 <- model
+#next 2 lines are modified for the models controlling for shared control groups
+prec_sub4 <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_sub4 <- df$H.d - predict(model_sub4)
+zes_sub4 <- es_sub4*prec_sub4
+plot(es_sub4,prec_sub4, xlab="", ylab="Precision (1/SE)", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "d) Caloric restriction - Exploration", adj=0)
+
+###### Cal.Neg.Anx (sub5)
+df <- Z_data_list[[6]]
+load("runs/M3.3_sub5.Rdata") #load best full model results
+model_sub5 <- model
+#next 2 lines are modified for the models controlling for shared control groups
+prec_sub5 <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_sub5 <- df$H.d - predict(model_sub5)
+zes_sub5 <- es_sub5*prec_sub5
+plot(es_sub5,prec_sub5, xlab="Hedges's d (residuals)", ylab="Precision (1/SE)", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "g) Caloric restriction - Anxiety", adj=0)
+
+###### Pro.Neg.Act (sub6)
+df <- Z_data_list[[7]]
+load("runs/M3.2_sub6.Rdata") #load best full model results
+model_sub6 <- model
+#next 2 lines are modified for the models controlling for shared control groups
+prec_sub6 <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_sub6 <- df$H.d - predict(model_sub6)
+zes_sub6 <- es_sub6*prec_sub6
+plot(es_sub6,prec_sub6, xlab="", ylab="", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "b) Protein restriction - Activity", adj=0)
+
+###### Pro.Neg.Exp (sub7)
+df <- Z_data_list[[8]]
+load("runs/M3.2_sub7.Rdata") #load best full model results
+model_sub7 <- model
+#next 2 lines are modified for the models controlling for shared control groups
+prec_sub7 <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_sub7 <- df$H.d - predict(model_sub7)
+zes_sub7 <- es_sub7*prec_sub7
+plot(es_sub7,prec_sub7, xlab="", ylab="", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "e) Protein restriction - Exploration", adj=0)
+
+###### Pro.Neg.Anx (sub8)
+df <- Z_data_list[[9]]
+load("runs/M3.2_sub8.Rdata") #load best full model results
+model_sub8 <- model
+#next 2 lines are modified for the models controlling for shared control groups
+prec_sub8 <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_sub8 <- df$H.d - predict(model_sub8)
+zes_sub8 <- es_sub8*prec_sub8
+plot(es_sub8,prec_sub8, xlab="Hedges's d (residuals)", ylab="", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "h) Protein restriction - Anxiety", adj=0)
+
+###### Cal.Plus.Act (sub1)
+df <- Z_data_list[[1]]
+load("runs/M3.1_sub1.Rdata") #load best full model results
+model_sub1 <- model
+#next 2 lines are modified for the models controlling for shared control groups
+prec_sub1 <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_sub1 <- df$H.d - predict(model_sub1)
+zes_sub1 <- es_sub1*prec_sub1
+plot(es_sub1,prec_sub1, xlab="", ylab="", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "c) Obesogenic - Activity", adj=0)
+
+###### Cal.Plus.Exp (moments method! use (x - mu) as residuals)
+df <- Z_data_list[[2]]
+prec_moment <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_moment <- df$H.d - 1.129344
+zes_moment <- es_moment*prec_moment
+plot(es_moment, prec_moment, xlab="", ylab="", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "f) Obesogenic - Exploration", adj=0)
+
+###### Cal.Plus.Anx (sub2)
+df <- Z_data_list[[3]]
+load("runs/M3.1_sub2.Rdata") #load best full model results
+model_sub2 <- model
+#next 2 lines are modified for the models controlling for shared control groups
+prec_sub2 <- 1/sqrt(df$H.d_Var_combined) # Precision = 1/sqrt(V)
+es_sub2 <- df$H.d - predict(model_sub2)
+zes_sub2 <- es_sub2*prec_sub2
+plot(es_sub2,prec_sub2, xlab="Hedges's d (residuals)", ylab="", xlim=c(-5,5), ylim=c(0,8), pch=1, cex=1.2)
+abline(v=0, lwd=1, lty=2)
+title(main = "i) Obesogenic - Anxiety", adj=0)
+
+dev.off()
+```
+
+5. Plot of distributions of continous predictors as histograms and as lines - rearranged
+----------------------------------------------------------------------------------------
+```{r plot cont distr, echo=FALSE, message=FALSE}
+
+### nominal manipulation value
+
+pdf(file="plots/Rplot_hist_nom_manip_val_v2.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,2,1),oma=c(0,1,0,0))
+data <- Z_data_list[[4]]
+hist(data$nom_manip_val, xlim=c(30,80),ylim=c(0,80),main="",xlab="",ylab="Frequency [%]")
+title(main="a) Caloric restriction - Activity", adj=0)
+data <- Z_data_list[[5]]
+hist(data$nom_manip_val, main="",xlim=c(30,80),ylim=c(0,80),xlab="",ylab="Frequency [%]")
+title(main="d) Caloric restriction - Exploration", adj=0)
+data <- Z_data_list[[6]]
+hist(data$nom_manip_val, main="",xlim=c(30,80),ylim=c(0,80),xlab="Dam dietary manipulation level [% control]",ylab="")
+title(main="g) Caloric restriction - Anxiety", adj=0)
+data <- Z_data_list[[7]]
+hist(data$nom_manip_val, main="",xlim=c(0,60),ylim=c(0,80),xlab="",ylab="")
+title(main="b) Protein restriction - Activity", adj=0)
+data <- Z_data_list[[8]]
+hist(data$nom_manip_val, main="",xlim=c(0,60),ylim=c(0,80),xlab="",ylab="")
+title(main="e) Protein restriction - Exploration", adj=0)
+data <- Z_data_list[[9]]
+hist(data$nom_manip_val, main="",xlim=c(0,60),ylim=c(0,80),xlab="Dam dietary manipulation level [% control]",ylab="")
+title(main="h) Protein restriction - Anxiety", adj=0)
+data <- Z_data_list[[1]]
+hist(data$nom_manip_val, main="",xlim=c(0,10),ylim=c(0,80),xlab="",ylab="")
+title(main="c) Obesogenic - Activity", adj=0)
+data <- Z_data_list[[2]]
+hist(data$nom_manip_val, main="",xlim=c(0,10),ylim=c(0,80),xlab="",ylab="")
+title(main="f) Obesogenic - Exploration", adj=0)
+data <- Z_data_list[[3]]
+hist(data$nom_manip_val, main="",xlim=c(0,10),ylim=c(0,80),xlab="Dam dietary manipulation level [% control]",ylab="")
+title(main="i) Obesogenic - Anxiety", adj=0)
+
+dev.off()
+
+
+### offspring response age
+
+pdf(file="plots/Rplot_hist_offspr_age_v2.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,2,1),oma=c(0,1,0,0))
+data <- Z_data_list[[4]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="Frequency [%]",breaks=c(22*0:22))
+title(main="a) Caloric restriction - Activity", adj=0)
+abline(v=22, lty=3)
+data <- Z_data_list[[5]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="Frequency [%]",breaks=c(22*0:22))
+title(main="d) Caloric restriction - Exploration", adj=0)
+abline(v=22, lty=3)
+data <- Z_data_list[[6]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="Offspring age at measurement [days]",ylab="Frequency [%]",breaks=c(22*0:22))
+title(main="g) Caloric restriction - Anxiety", adj=0)
+abline(v=22, lty=3)
+data <- Z_data_list[[7]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="",breaks=c(22*0:22))
+title(main="b) Protein restriction - Activity", adj=0)
+abline(v=22, lty=3)
+data <- Z_data_list[[8]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="",breaks=c(22*0:22))
+title(main="e) Protein restriction - Exploration", adj=0)
+abline(v=22, lty=3)
+data <- Z_data_list[[9]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="Offspring age at measurement [days]",ylab="",breaks=c(22*0:22))
+title(main="h) Protein restriction - Anxiety", adj=0)
+abline(v=22, lty=3)
+data <- Z_data_list[[1]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="",breaks=c(22*0:22))
+title(main="c) Obesogenic - Activity", adj=0)
+abline(v=22, lty=3)
+data <- Z_data_list[[2]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="",ylab="",breaks=c(22*0:22))
+title(main="f) Obesogenic - Exploration", adj=0)
+abline(v=22, lty=3)
+data <- Z_data_list[[3]]
+hist(data$response_age_dPP, main="",xlim=c(0,500),ylim=c(0,80),xlab="Offspring age at measurement [days]",ylab="",breaks=c(22*0:22))
+title(main="i) Obesogenic - Anxiety", adj=0)
+abline(v=22, lty=3)
+
+dev.off()
+
+
+### line plot for the start, end and duration of the maternal treatment - ordered version
+
+pdf(file="plots/Rplot_timing_lines_ordered_v2.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,2,1),oma=c(0,1,0,0))
+data <- Z_data_list[[4]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="a) Caloric restriction - Activity", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[5]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="d) Caloric restriction - Exploration", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[6]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="time [days]", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="g) Caloric restriction - Anxiety", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[7]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="b) Protein restriction - Activity", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[8]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="e) Protein restriction - Exploration", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[9]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="time [days]", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="h) Protein restriction - Anxiety", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[1]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="c) Obesogenic - Activity", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[2]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="f) Obesogenic - Exploration", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+data <- Z_data_list[[3]]
+data <- data[order(data$dam_diet_start_dPC,data$dam_diet_end_dPC),]
+plot(1, type="n", yaxt="n", xlab="time [days]", ylab="",xlim=c(-100,60),ylim=c(0,110), main="")
+title(main="i) Obesogenic - Anxiety", adj=0)
+segments(data$dam_diet_start_dPC,1:dim(data)[1],data$dam_diet_end_dPC,1:dim(data)[1])
+abline(v=0, lty=3)
+abline(v=22, lty=3)
+abline(v=43, lty=3)
+
+dev.off()
+```
+
+6. Bubble plot of the effects of maternal nutritional manipulation levels on offspring behaviours
+-------------------------------------------------------------------------------------------------
+```{r plot bubble manip val, echo=FALSE, message=FALSE}
+pdf(file="plots/Rplot_bubble_nom_manip_val_v2.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,2,1),oma=c(0,1,0,0))
+data <- Z_data_list[[4]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="",xlim=c(30,75),ylim=c(-5,3))
+title(main="a) Caloric restriction - Activity", adj=0)
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- Z_data_list[[5]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="Effect size (Hedge's d)",main="",xlim=c(30,75),ylim=c(-5,3))
+title(main="d) Caloric restriction - Exploration", adj=0)
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- Z_data_list[[6]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="Dam dietary manipulation level [% control]",ylab="Effect size (Hedge's d)",main="",xlim=c(30,75),ylim=c(-5,3))
+title(main="g) Caloric restriction - Anxiety", adj=0)
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- Z_data_list[[7]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="",xlim=c(0,50),ylim=c(-5,3))
+title(main="b) Protein restriction - Activity", adj=0)
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- Z_data_list[[8]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="",xlim=c(0,50),ylim=c(-5,3))
+title(main="e) Protein restriction - Exploration", adj=0)
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- Z_data_list[[9]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="Dam dietary manipulation level [% control]",ylab="",main="",xlim=c(0,50),ylim=c(-5,3))
+title(main="h) Protein restriction - Anxiety", adj=0)
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- Z_data_list[[1]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="",xlim=c(1,10),ylim=c(-5,3))
+title(main="c) Obesogenic - Activity", adj=0)
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- Z_data_list[[2]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="",ylab="",main="",xlim=c(1,10),ylim=c(-5,3))
+title(main="f) Obesogenic - Exploration", adj=0)
+#abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+data <- Z_data_list[[3]]
+symbols(data$nom_manip_val,data$H.d, circles=1/data$SE.d,inches=0.1,xlab="Dam dietary manipulation level [% control]",ylab="",main="",xlim=c(1,10),ylim=c(-5,3))
+title(main="i) Obesogenic - Anxiety", adj=0)
+abline(lm(data$H.d ~ data$nom_manip_val, na.action=na.omit), lwd=2)
+
+dev.off()
+
+```
+
+7. Box-plot of effect sizes by sex
+----------------------------------------------------------------------------------------
+```{r plot box sex, echo=FALSE, message=FALSE}
+
+### nominal manipulation value
+
+pdf(file="plots/Rplot_boxplot_sex_v2.pdf",width=8,height=7,family="sans",pointsize=10)
+
+par(mfcol=c(3,3),mar=c(4,4,2,1),oma=c(0,1,0,0))
+data <- Z_data_list[[4]]
+#levels(data$sex)
+levels(data$sex) <- c("Both","Female","Male") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",ylab="Effect size (Hedge's d)",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="a) Caloric restriction - Activity", adj=0)
+data <- Z_data_list[[5]]
+#levels(data$sex)
+levels(data$sex) <- c("Both","Male","Female") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",ylab="Effect size (Hedge's d)",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="d) Caloric restriction - Exploration", adj=0)
+data <- Z_data_list[[6]]
+#levels(data$sex)
+levels(data$sex) <- c("Both","Male","Female") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",ylab="Effect size (Hedge's d)",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="g) Caloric restriction - Anxiety", adj=0)
+data <- Z_data_list[[7]]
+#levels(data$sex)
+levels(data$sex) <- c("Both","Female","Male") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="b) Protein restriction - Activity", adj=0)
+data <- Z_data_list[[8]]
+#levels(data$sex)
+levels(data$sex) <- c("Both","Female","Male") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="e) Protein restriction - Exploration", adj=0)
+data <- Z_data_list[[9]]
+#levels(data$sex)
+levels(data$sex) <- c("Both","Female","Male") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="h) Protein restriction - Anxiety", adj=0)
+data <- Z_data_list[[1]]
+#levels(data$sex)
+levels(data$sex) <- c("Female","Male") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="c) Obesogenic - Activity", adj=0)
+data <- Z_data_list[[2]]
+#levels(data$sex)
+levels(data$sex) <- c("Male") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="f) Obesogenic - Exploration", adj=0)
+data <- Z_data_list[[3]]
+#levels(data$sex)
+levels(data$sex) <- c("Female","Male") #rename factor levels
+data$sex<-factor(data$sex, levels=c("Male","Female","Both")) #reorder factor levels
+boxplot(H.d~sex,data=data,xlab="",main="",ylim=c(-5,3),varwidth=TRUE)
+abline(h=0, lwd=0.5)
+title(main="i) Obesogenic - Anxiety", adj=0)
+
+dev.off()
+
+```
